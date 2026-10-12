@@ -19,6 +19,7 @@ build:
 clean:
 
 format:
+	clang-format -i include/* src/* test/*
 
 .PHONY: all clean format
 
