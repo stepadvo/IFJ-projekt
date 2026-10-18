@@ -78,7 +78,7 @@ void BSTDestruct(bSearchTree *tree) {
 }
 
 /**
- * @brief inserts a key to the
+ * @brief inserts a key to the key array of the tree
  */
 char *BSTInsertKey(bSearchTree *tree, const char *key) {
     // repeat until the arr capacity is sufficient
@@ -99,6 +99,10 @@ char *BSTInsertKey(bSearchTree *tree, const char *key) {
     return ptr;
 }
 
+/**
+ * @brief constructs a new leaf node on the heap
+ * @return ptr to the node or NULL on memory allocation error
+ */
 BSTNode *createBSTNode(bSearchTree *tree, const char *key, size_t data) {
     BSTNode *temp = malloc(sizeof(BSTNode));
     if (!temp) {
@@ -133,14 +137,42 @@ static inline char getBalance(BSTNode *node) {
     return getHeight(node->right) - getHeight(node->left);
 }
 
+/**
+ * @brief rotates the subtree with root node to the right
+ *
+ * rotates according to the following diagram
+ *    A          B
+ *   / \        / \
+ *  B  T3 ->   T1 A
+ * / \        / \
+ *T1 T2      T2 T3
+ */
 BSTNode *rotateRight(BSTNode *node) {
-    // TODO
-    return node;
+    BSTNode *lChild = node->left;
+    BSTNode *lrChild = lChild->right;
+
+    node->left = lrChild;
+    lChild->right = node;
+    return lChild;
 }
 
+/**
+ * @brief rotates the subtree with root node to the left
+ *
+ * rotates according to the following diagram
+ *   B           A
+ *  / \         / \
+ * T1 A   ->   B  T3
+ *   / \      / \
+ *  T2 T3    T1 T2
+ */
 BSTNode *rotateLeft(BSTNode *node) {
-    // TODO
-    return node;
+    BSTNode *rChild = node->left;
+    BSTNode *rlChild = rChild->right;
+
+    node->right = rlChild;
+    rChild->left = node;
+    return rChild;
 }
 
 /**
@@ -149,7 +181,9 @@ BSTNode *rotateLeft(BSTNode *node) {
  * replace the root node in the tree if not balanced
  *
  * checks the balance at node
- * if the balance is not within <-1,1> corrects it by rotations
+ * if the balance is not in interval <-1,1> corrects it by rotations
+ *
+ * works both for balancing after inserting and deleting
  */
 BSTNode *BSTBalanceTree(BSTNode *node) {
     char balance = getBalance(node);
@@ -177,6 +211,11 @@ BSTNode *BSTBalanceTree(BSTNode *node) {
     return node;
 }
 
+/**
+ * @brief a helper function, inserts the node in the subtree rooted with root
+ * @return pointer to new node if root is below a leaf node or pointer to root
+ * if the key is duplicite
+ */
 BSTNode *BSTInsertNode(BSTNode *root, BSTNode *newNode) {
     if (!root) {
         return newNode;
@@ -190,7 +229,7 @@ BSTNode *BSTInsertNode(BSTNode *root, BSTNode *newNode) {
         return root;
     }
 
-    // update the height ()
+    // update the height
     root->height = 1 + MAX(getHeight(root->right), getHeight(root->left));
 
     // check and correct the balance

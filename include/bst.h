@@ -27,6 +27,8 @@ void BSTdestruct(bSearchTree *tree);
  * @param key the key of the new node
  * @param data of the new node
  * @return 0 on success, -1 on failure
+ *
+ * if the key is duplicite, there will be no change to the tree
  */
 int BSTInsert(bSearchTree *tree, const char *key, size_t data);
 
