@@ -153,6 +153,11 @@ BSTNode *rotateRight(BSTNode *node) {
 
     node->left = lrChild;
     lChild->right = node;
+
+    // update heights
+    node->height = 1 + MAX(getHeight(node->left), getHeight(node->right));
+    lChild->height = 1 + MAX(getHeight(lChild->left), getHeight(lChild->right));
+
     return lChild;
 }
 
@@ -172,6 +177,11 @@ BSTNode *rotateLeft(BSTNode *node) {
 
     node->right = rlChild;
     rChild->left = node;
+
+    // update heights
+    node->height = 1 + MAX(getHeight(node->left), getHeight(node->right));
+    rChild->height = 1 + MAX(getHeight(rChild->left), getHeight(rChild->right));
+
     return rChild;
 }
 
@@ -213,8 +223,7 @@ BSTNode *BSTBalanceTree(BSTNode *node) {
 
 /**
  * @brief a helper function, inserts the node in the subtree rooted with root
- * @return pointer to new node if root is below a leaf node or pointer to root
- * if the key is duplicite
+ * @return pointer to new root of the subtree
  */
 BSTNode *BSTInsertNode(BSTNode *root, BSTNode *newNode) {
     if (!root) {
@@ -246,11 +255,91 @@ int BSTInsert(bSearchTree *tree, const char *key, size_t data) {
     return 0;
 }
 
+/**
+ * @brief finds the righmost ("highest") key in the subtree rooted with node
+ * @return pointer to the found node
+ */
+BSTNode *BSTMax(BSTNode *node) {
+    if (!node) {
+        return NULL;
+    }
+
+    BSTNode *lMax = BSTMax(node->left);
+    BSTNode *rMax = BSTMax(node->right);
+    if (lMax && rMax) {
+        // return the maximum from both children and node
+        BSTNode *childMax = strcmp(lMax->key, rMax->key) > 0 ? lMax : rMax;
+        return strcmp(node->key, childMax->key) > 0 ? node : childMax;
+    } else if (lMax) {
+        // return maximum from left child and node
+        return strcmp(node->key, lMax->key) > 0 ? node : lMax;
+    } else if (rMax) {
+        // return maximum from right child and node
+        return strcmp(node->key, rMax->key) > 0 ? node : rMax;
+    }
+    // else this is a leaf node - return node
+    return node;
+}
+
+/**
+ * @brief a helper function, removes the node with key in the subtree rooted
+ * with root
+ * @return pointer to the new root of the subtree
+ */
+BSTNode *BSTRemoveNode(BSTNode *root, const char *key, size_t *oldData) {
+    if (!root) {
+        return NULL;
+    }
+
+    if (key < root->key) {
+        root->left = BSTRemoveNode(root->left, key, oldData);
+    } else if (key > root->key) {
+        root->right = BSTRemoveNode(root->right, key, oldData);
+    }
+    // else found the node
+    else {
+        // both children
+        if (root->left && root->right) {
+            // find the maximum in left subtree, replace the root with it and
+            // delete it
+            BSTNode *maxLeft = BSTMax(root->left);
+            root->key = maxLeft->key;
+            root->data = maxLeft->data;
+            size_t discard;
+            root->left = BSTRemoveNode(root->left, maxLeft->key, &discard);
+        }
+        // only left child
+        else if (root->left) {
+            BSTNode *lChild = root->left;
+            free(root);
+            return lChild;
+
+        }
+        // only right child
+        else if (root->right) {
+            BSTNode *rChild = root->right;
+            free(root);
+            return rChild;
+
+        }
+        // no children
+        else {
+            free(root);
+            return NULL;
+        }
+    }
+
+    // update the height
+    root->height = 1 + MAX(getHeight(root->right), getHeight(root->left));
+
+    // check and correct the balance
+    return BSTBalanceTree(root);
+}
+
 size_t BSTRemove(bSearchTree *tree, const char *key) {
-    (void)tree;
-    (void)key;
-    // TODO
-    return 1;
+    size_t removedData;
+    BSTRemoveNode(tree->root, key, &removedData);
+    return removedData;
 }
 
 size_t *BSTSearch(bSearchTree *tree, const char *key) {
