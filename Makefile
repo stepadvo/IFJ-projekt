@@ -1,14 +1,21 @@
 CC = gcc
 CXX = g++
 CFLAGS = -Wall -Werror -Wextra -Iinclude -std=c11
-CXXFLAGS = -Wall -Werror -Wextra -Iinclude -sdt=c++14
-LDFLAGS = -lgtest -lgtest_main -ptrhead
+CXXFLAGS = -Wall -Werror -Wextra -Iinclude -std=c++17
+LDFLAGS = -lgtest -lgtest_main -pthread -lstdc++
 
-#add the flags for clang-format here
-CFORMATFLAGS =
+VPATH=src:test:include
 
 #targets:
 #add the build targets here
+#TEST_EXAMPLE = test_example
+
+#add all test targets
+TEST_STEMS = # TEST_EXAMPLE ...
+
+#objects:
+BUILD_O = #src_example.o	#add all further objects needed for the whole application
+#TEST_EXAMPLE_O = test_example.o src_example.o
 
 #rules:
 #add the build rules here
@@ -17,10 +24,23 @@ all: build
 build:
 
 clean:
+	rm -f *.o *.out
 
 format:
 	clang-format -i include/* src/* test/*
 
-.PHONY: all clean format
+test: $(foreach t,$(TEST_STEMS),$($(t))_build)
+	$(foreach t,$(TEST_STEMS), ./$($(t)).out)
 
+define DEFINE_TEST_RULES =
+$($(1)): $($(1))_build
+	./$($(1)).out
+
+$($(1))_build: $($(1)_O)
+	$(CC) $(LDFLAGS) -o $($(1)).out $($(1)_O)
+endef
+
+$(foreach t,$(TEST_STEMS),$(eval $(call DEFINE_TEST_RULES,$(t))))
+
+.PHONY: all clean format
 
