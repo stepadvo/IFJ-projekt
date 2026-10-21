@@ -1,7 +1,7 @@
 /**
  * @file ast.h
  * @brief interface declaration for the Abstract Syntax Tree (AST)
- * @author Jiří Dohnal, xdohnaj00
+ * @author Jiří Dohnal, xdohnaj00@stud.fit.vutbr.cz
  *
  * Declarations of the structures and functions working with the AST.
  */
@@ -161,6 +161,11 @@ struct astNode
 
     } data;
 };
+
+/**
+ * @brief checks if dynamic allocation succeded
+ */
+void checkMalloc(void *ptr);
 
 /**
  * @brief creates a program root node
