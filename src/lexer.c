@@ -12,7 +12,7 @@
  * @brief Private state of the lexical analyzer.
  */
 struct Lexer {
-    FILE *input; /**< Input stream borrowed from the caller. */
+    FILE *input;   /**< Input stream borrowed from the caller. */
     size_t line;   /**< Line of the next character, numbered from 1. */
     size_t column; /**< Column of the next character, numbered from 1. */
 };
@@ -30,7 +30,8 @@ struct Lexer {
 //     *out_char = character;
 //
 //     if (character == EOF) {
-//         if (ferror(lexer->input)) { /* Distinguish a read error from normal EOF. */
+//         if (ferror(lexer->input)) { /* Distinguish a read error from normal
+//         EOF. */
 //             return LEXER_INTERNAL_ERROR;
 //         }
 //
@@ -105,6 +106,4 @@ Lexer *lexer_create(FILE *input) {
  *
  * @param lexer Context to release; NULL is allowed.
  */
-void lexer_destroy(Lexer *lexer) {
-    free(lexer);
-}
+void lexer_destroy(Lexer *lexer) { free(lexer); }
