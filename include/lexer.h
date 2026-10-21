@@ -1,7 +1,7 @@
 /**
  * @file lexer.h
- * @author IVO ZAHRADNÍČEK
  * @brief Interface of the IFJ26 lexical analyzer.
+ * @author Ivo Zahradníček, xzahrai00@stud.fit.vutbr.cz
  *
  * The lexer reads a source program from the supplied input stream and
  * provides its tokens to the parser one at a time.
@@ -63,8 +63,12 @@ Lexer *lexer_create(FILE *input);
  * reported through newline_before. Indentation is returned as the number
  * of spaces in indent on the first actual token of a logical line.
  *
- * This function does not print diagnostics or terminate the program. After
- * a lexical or internal error, the caller must clean up and stop reading.
+ * This function never terminates the program. Diagnostics are reported
+ * through the shared error-reporting mechanism, which preserves the first
+ * compilation error in the global error code.
+ *
+ * After a recoverable lexical error, the caller may request another token.
+ * After an internal error, the caller must clean up and stop reading.
  *
  * @param lexer Context created by lexer_create().
  * @param out_token Output token, initialized to zero or containing a token
@@ -88,4 +92,3 @@ LexerStatus get_token(Lexer *lexer, Token *out_token);
 void lexer_destroy(Lexer *lexer);
 
 #endif
-
