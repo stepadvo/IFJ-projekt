@@ -1,7 +1,10 @@
 /**
  * @file token.c
- * @author IVO ZAHRADNÍČEK
  * @brief Token cleanup for the IFJ26 lexical analyzer.
+ * @author Ivo Zahradníček, xzahrai00@stud.fit.vutbr.cz
+ *
+ * Implements the release of owned token text and resets tokens
+ * to an empty state.
  */
 
 #include "token.h"
