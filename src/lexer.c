@@ -18,8 +18,8 @@ struct Lexer {
     FILE *input;         /**< Input stream borrowed from the caller. */
     size_t line;         /**< Line of the next character, numbered from 1. */
     size_t column;       /**< Column of the next character, numbered from 1. */
-    bool line_has_token; /**< Whether the current logical line contains a token.
-                          */
+    bool line_has_token; /**< Whether the current logical line contains a
+                            token.*/
 };
 
 /**
@@ -35,8 +35,8 @@ static LexerStatus lexer_read_char(Lexer *lexer, int *out_char) {
     *out_char = character;
 
     if (character == EOF) {
-        if (ferror(
-                lexer->input)) { /* Distinguish a read error from normal EOF. */
+        /* Distinguish a read error from normal EOF. */
+        if (ferror(lexer->input)) {
             return LEXER_INTERNAL_ERROR;
         }
 
@@ -68,8 +68,8 @@ static LexerStatus lexer_peek_char(Lexer *lexer, int *out_char) {
     int character = fgetc(lexer->input);
 
     if (character == EOF) {
-        if (ferror(
-                lexer->input)) { /* Distinguish a read error from normal EOF. */
+        /* Distinguish a read error from normal EOF. */
+        if (ferror(lexer->input)) {
             return LEXER_INTERNAL_ERROR;
         }
 
@@ -149,6 +149,23 @@ LexerStatus get_token(Lexer *lexer, Token *out_token) {
     }
 
     TokenType type;
+
+    /*
+     * GPT-6.1 Sol assisted with this code.
+     * Prompt: Implementuj pouze switch pro rozpoznávání operátorů v
+     * get_token(). První znak je již spotřebovaný a uložený v character.
+     * Rozpoznávej
+     * +, -, *, /, =, ==, !, !=, <, <=, <-, >, >=, && a || a nastav
+     * odpovídající hodnotu TokenType do proměnné type.
+     * Pro kontrolu druhého znaku si vytvoř pomocnou proměnnou a použij
+     * funkci lexer_peek_char(Lexer *lexer, int *out_char) a spotřebuj jej
+     * pomocí funkce lexer_read_char(Lexer *lexer, int *out_char) pouze tehdy,
+     * pokud tvoří daný operátor. Jiný následující znak ponech ve vstupu. Chyby
+     * pomocných funkcí předávej volajícímu. Samostatné & nebo | odmítni pomocí
+     * LEXER_ERROR. Pro dosud nepodporované vstupní znaky dočasně vrať
+     * LEXER_INTERNAL_ERROR. Rozpoznávání komentářů u / ponech jako TODO.
+     * Neměň veřejné rozhraní ani ostatní části funkce.
+     */
 
     switch (character) {
     case '+':
