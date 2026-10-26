@@ -20,6 +20,9 @@ struct Lexer {
     size_t column;       /**< Column of the next character, numbered from 1. */
     bool line_has_token; /**< Whether the current logical line contains a
                             token.*/
+    size_t paren_depth;  /**< Number of currently open parentheses. */
+    bool newline_since_token; /**< Whether an LF occurred since the last actual
+                                 token. */
 };
 
 /**
@@ -104,6 +107,8 @@ Lexer *lexer_create(FILE *input) {
     lexer->line = 1;
     lexer->column = 1;
     lexer->line_has_token = false;
+    lexer->paren_depth = 0;
+    lexer->newline_since_token = false;
 
     return lexer;
 }
@@ -121,31 +126,47 @@ Lexer *lexer_create(FILE *input) {
 LexerStatus get_token(Lexer *lexer, Token *out_token) {
     token_free(out_token);
 
-    out_token->line = lexer->line;
-    out_token->column = lexer->column;
-
     int character;
-    LexerStatus status = lexer_peek_char(lexer, &character);
+    LexerStatus status;
 
-    if (status != LEXER_OK) {
-        return status;
-    }
+    while (true) {
+        out_token->line = lexer->line;
+        out_token->column = lexer->column;
 
-    if (character == EOF) {
-        if (lexer->line_has_token) {
+        status = lexer_peek_char(lexer, &character);
+
+        if (status != LEXER_OK) {
+            return status;
+        }
+
+        if (character == EOF) {
+            if (lexer->line_has_token && lexer->paren_depth == 0) {
+                out_token->type = TOKEN_NEWLINE;
+                lexer->line_has_token = false;
+                return LEXER_OK;
+            }
+
+            out_token->type = TOKEN_EOF;
+            return LEXER_OK;
+        }
+
+        status = lexer_read_char(lexer, &character);
+
+        if (status != LEXER_OK) {
+            return status;
+        }
+
+        if (character != '\n') {
+            break;
+        }
+
+        lexer->newline_since_token = true;
+
+        if (lexer->paren_depth == 0 && lexer->line_has_token) {
             out_token->type = TOKEN_NEWLINE;
             lexer->line_has_token = false;
             return LEXER_OK;
         }
-
-        out_token->type = TOKEN_EOF;
-        return LEXER_OK;
-    }
-
-    status = lexer_read_char(lexer, &character);
-
-    if (status != LEXER_OK) {
-        return status;
     }
 
     TokenType type;
@@ -305,6 +326,50 @@ LexerStatus get_token(Lexer *lexer, Token *out_token) {
         break;
     }
 
+    case '(': {
+        type = TOKEN_LPAREN;
+
+        lexer->paren_depth += 1;
+
+        break;
+    }
+
+    case ')': {
+        type = TOKEN_RPAREN;
+
+        if (lexer->paren_depth > 0) {
+            lexer->paren_depth -= 1;
+        }
+
+        break;
+    }
+
+    case ':': {
+        type = TOKEN_COLON;
+        break;
+    }
+
+    case ',': {
+        type = TOKEN_COMMA;
+        break;
+    }
+
+    case ';': {
+        type = TOKEN_SEMICOLON;
+        break;
+    }
+
+    case '.': {
+        type = TOKEN_DOT;
+        /* TODO: Recognize floating-point literals starting with a dot. */
+        break;
+    }
+
+    case '@': {
+        type = TOKEN_AT;
+        break;
+    }
+
     default:
         /* TODO: Recognize the remaining tokens. */
         return LEXER_INTERNAL_ERROR;
@@ -312,7 +377,10 @@ LexerStatus get_token(Lexer *lexer, Token *out_token) {
 
     out_token->type = type;
     out_token->starts_logical_line = !lexer->line_has_token;
+    out_token->newline_before = lexer->newline_since_token;
+
     lexer->line_has_token = true;
+    lexer->newline_since_token = false;
 
     return LEXER_OK;
 }
