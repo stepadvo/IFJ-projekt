@@ -25,16 +25,13 @@ typedef enum { VAL, VAR, FUN } symType;
  * @details the structure will be created and allocated by function
  * `insert...Symbol` and can be altered by user
  */
-typedef struct Symbol symbol;
-struct Symbol {
-    char *id;
+typedef struct Symbol {
     symType symbolType;
-    int blockDepth;
 
     union {
         // if the symbolType is VAR or VAL
         struct {
-            varType type;
+            varType dataType;
             // the following union can be initialized by the user if the
             // symbolType is VAL
             union {

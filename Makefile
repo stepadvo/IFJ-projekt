@@ -9,13 +9,17 @@ VPATH=src:test:include
 #targets:
 #add the build targets here
 #TEST_EXAMPLE = test_example
+TEST_BST = test_bst
+TEST_SYMTABLE = test_symtable
 
 #add all test targets
-TEST_STEMS = # TEST_EXAMPLE ...
+TEST_STEMS = TEST_BST TEST_SYMTABLE # TEST_EXAMPLE ...
 
 #objects:
 BUILD_O = compiler.o parser.o ast.o lexer.o symtable.o bst.o
 #TEST_EXAMPLE_O = test_example.o src_example.o
+TEST_BST_O = bst.o test_bst.o
+TEST_SYMTABLE_O = symtable.o test_symtable.o
 
 #rules:
 #add the build rules here
