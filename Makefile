@@ -14,14 +14,15 @@ VPATH=src:test:include
 TEST_STEMS = # TEST_EXAMPLE ...
 
 #objects:
-BUILD_O = #src_example.o	#add all further objects needed for the whole application
+BUILD_O = compiler.o parser.o ast.o lexer.o symtable.o bst.o
 #TEST_EXAMPLE_O = test_example.o src_example.o
 
 #rules:
 #add the build rules here
 all: build
 
-build:
+build: $(BUILD_O)
+	$(CC) $(CFLAGS) -o compiler.out $(BUILD_O)
 
 clean:
 	rm -f *.o *.out
