@@ -20,6 +20,13 @@ typedef struct SymbolPrivate {
     size_t dataMasked; // the data that this entry masked in the BST
 } symbolPrivate;
 
+symTable *initSymTable(void) { return NULL; }
+
+int destructSymTable(symTable *table) {
+    (void)table;
+    return 0;
+}
+
 /*
  * end src_example.h
  */

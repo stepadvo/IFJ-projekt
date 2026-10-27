@@ -7,34 +7,33 @@
  */
 
 #ifndef AST_H
-#define AST_H
+    #define AST_H
 
-#include <stdbool.h>
-#include <stddef.h>
-#include "token.h"
-#include "symtable.h"
+    #include "symtable.h"
+    #include "token.h"
+    #include <stdbool.h>
+    #include <stddef.h>
 
 /** @brief enum of all possible node types in the AST */
-typedef enum
-{
-    AST_PROGRAM,        // Root node of the entire IFJ26 program
-    AST_FUNC_DEF,       // Function definition (def)
-    AST_VAR_DEF,        // Variable definition (val / var)
-    AST_ASSIGN,         // Assignment to a variable (=)
-    AST_IF,             // Conditional statement (if-then-else)
-    AST_WHILE,          // Loop statement (while)
-    AST_FUNC_CALL,      // Function call
-    AST_RETURN,         // Return statement inside a function
-    AST_BINOP,          // Binary operations (+, -, *, /, <, ==, etc.)
-    AST_UNOP,           // Unary operations (-, !)
-    AST_LITERAL,        // Constant literals (42, "text", 3.14)
-    AST_IDENTIFIER,     // Variable or function names
-    AST_BLOCK           // Block of statements (body of functions, loops, conditions)
+typedef enum {
+    AST_PROGRAM,    // Root node of the entire IFJ26 program
+    AST_FUNC_DEF,   // Function definition (def)
+    AST_VAR_DEF,    // Variable definition (val / var)
+    AST_ASSIGN,     // Assignment to a variable (=)
+    AST_IF,         // Conditional statement (if-then-else)
+    AST_WHILE,      // Loop statement (while)
+    AST_FUNC_CALL,  // Function call
+    AST_RETURN,     // Return statement inside a function
+    AST_BINOP,      // Binary operations (+, -, *, /, <, ==, etc.)
+    AST_UNOP,       // Unary operations (-, !)
+    AST_LITERAL,    // Constant literals (42, "text", 3.14)
+    AST_IDENTIFIER, // Variable or function names
+    AST_BLOCK // Block of statements (body of functions, loops, conditions)
 } astNodeType;
 
 /**
  * @brief the abstract syntax tree node structure
- * 
+ *
  * the structure will be created and allocated by create node functions
  */
 typedef struct astNode astNode;
@@ -42,82 +41,70 @@ typedef struct astNode astNode;
 /**
  * @brief structure for holding function parameters in the AST
  */
-typedef struct
-{
+typedef struct {
     char *name;
     varType type;
 } astFuncParam;
 
-struct astNode
-{
+struct astNode {
     astNodeType type;
-    varType result_type; 
-    
-    union
-    {
+    varType result_type;
+
+    union {
         // if the node type is AST_PROGRAM
-        struct
-        {
+        struct {
             astNode **functions;
             size_t count;
             size_t capacity;
         } program;
 
         // if the node type is AST_BINOP
-        struct
-        {
+        struct {
             TokenType op;
             astNode *left;
             astNode *right;
         } binop;
 
         // if the node type is AST_UNOP
-        struct
-        {
+        struct {
             TokenType op;
             astNode *operand;
         } unop;
 
         // if the node type is AST_LITERAL
-        struct
-        {
+        struct {
             TokenType lit_type;
             TokenAttribute attribute;
         } literal;
 
         // if the node type is AST_IDENTIFIER
-        struct
-        {
+        struct {
             char *name;
             symbol *sym_ptr;
         } identifier;
 
         // if the node type is AST_IF
-        struct
-        {
+        struct {
             astNode *condition;
             astNode *then_block;
             astNode *else_block;
         } if_stmt;
 
         // if the node type is AST_WHILE
-        struct
-        {
+        struct {
             astNode *condition;
             astNode *body_block;
         } while_stmt;
 
         // if the node type is AST_BLOCK
-        struct
-        {
+        struct {
             astNode **statements;
             size_t count;
             size_t capacity;
         } block;
-        
+
         // if the node type is AST_FUNC_CALL
-        struct
-        {
+        struct {
             char *func_name;
             symbol *sym_ptr;
             astNode **arguments;
@@ -126,8 +113,7 @@ struct astNode
         } func_call;
 
         // if the node type is AST_VAR_DEF
-        struct
-        {
+        struct {
             char *name;
             bool is_constant;
             varType explicit_type;
@@ -135,16 +121,14 @@ struct astNode
         } var_def;
 
         // if the node type is AST_ASSIGN
-        struct
-        {
+        struct {
             char *name;
             symbol *sym_ptr;
             astNode *value;
         } assign;
-        
+
         // if the node type is AST_FUNC_DEF
-        struct
-        {
+        struct {
             char *name;
             symbol *sym_ptr;
             bool is_main;
@@ -154,8 +138,7 @@ struct astNode
         } func_def;
 
         // if the node type is AST_RETURN
-        struct
-        {
+        struct {
             astNode *value;
         } return_stmt;
 
@@ -180,17 +163,19 @@ astNode *createBlockNode();
 /**
  * @brief appends a statement to the block node
  */
-int addStatementToBlock(astNode *blockNode, astNode *statement); 
+int addStatementToBlock(astNode *blockNode, astNode *statement);
 
 /**
  * @brief creates a function definition node
  */
-astNode *createFuncDefNode(char *name, bool isMain, astFuncParam *params, size_t paramCount, astNode *body);
+astNode *createFuncDefNode(char *name, bool isMain, astFuncParam *params,
+                           size_t paramCount, astNode *body);
 
 /**
  * @brief creates a variable definition node (val/var)
  */
-astNode *createVarDefNode(char *name, bool isConstant, varType explicitType, astNode *initializer);
+astNode *createVarDefNode(char *name, bool isConstant, varType explicitType,
+                          astNode *initializer);
 
 /**
  * @brief creates a literal node
@@ -201,6 +186,11 @@ astNode *createLiteralNode(Token *token);
  * @brief destructs an ast and frees allocated memory
  */
 void freeAst(astNode *root);
+
+/**
+ * @brief appends a function definition to the program root node
+ */
+int addFunctionToProgram(astNode *programNode, astNode *funcDef);
 
 #endif // AST_H
 

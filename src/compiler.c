@@ -1,13 +1,7 @@
-/**
- * @file compiler.c
- * @brief a top level file for the most basic routines
- * @author Štěpán Dvořák, xdvoras@stud.fit.vutbr.cz
- *
- * detailed description
- */
-
 #include "compiler.h"
-#include <asm-generic/errno-base.h>
+#include "ast.h"
+#include "parser.h"
+#include "symtable.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -16,19 +10,36 @@ int ERRCODE;
 int main(int argc, char *argv[]) {
     ERRCODE = 0;
 
-    //TODO call parser
+    (void)argc;
+    (void)argv;
 
-    if (ERRCODE != EXIT_SUCCESS) {
+    // 1. Initialize the global symbol table
+    symTable *global_table = initSymTable();
+    if (global_table == NULL) {
+        fprintf(stderr, "Internal error: Failed to init symbol table\n");
+        return 99;
+    }
+
+    // SA
+    astNode *ast_root = parse(global_table);
+
+    // TODO: Semantic analysis
+    // TODO: Code generator
+
+    // Free AST
+    if (ast_root != NULL) {
+        freeAst(ast_root);
+    }
+    destructSymTable(global_table);
+
+    if (ERRCODE != 0) {
         fprintf(stderr, "\
 ==================================\n\
- Compilation ended unsuccesfully. \n\
+ Compilation ended unsuccessfully.\n\
          output not valid         \n\
 ==================================\n\
 ");
     }
+
     return ERRCODE;
 }
-
-/*
- * end compiler.c
- */

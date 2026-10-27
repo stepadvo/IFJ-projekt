@@ -9,9 +9,9 @@
 #ifndef SYMTABLE_H
     #define SYMTABLE_H
 
+    #include "compiler.h"
     #include <stdbool.h>
     #include <stdlib.h>
-    #include "compiler.h"
 
 /** @brief the symbol table abstract data type */
 typedef struct SymTable symTable;
@@ -25,13 +25,17 @@ typedef enum { VAL, VAR, FUN } symType;
  * @details the structure will be created and allocated by function
  * `insert...Symbol` and can be altered by user
  */
-typedef struct Symbol {
+typedef struct Symbol symbol;
+
+struct Symbol {
+    char *id;
     symType symbolType;
+    int blockDepth;
 
     union {
         // if the symbolType is VAR or VAL
         struct {
-            varType dataType;
+            varType type;
             // the following union can be initialized by the user if the
             // symbolType is VAL
             union {
