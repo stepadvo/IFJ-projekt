@@ -6,8 +6,8 @@
  * Implements lexer context management, character reading, source position
  * tracking, and token recognition.
  */
-
 #include "lexer.h"
+#include "compiler.h"
 #include <stdlib.h>
 
 /**
@@ -40,6 +40,14 @@ static LexerStatus lexer_read_char(Lexer *lexer, int *out_char) {
     if (character == EOF) {
         /* Distinguish a read error from normal EOF. */
         if (ferror(lexer->input)) {
+            if (ERRCODE == 0) {
+                ERRCODE = LEXER_INTERNAL_ERROR;
+            }
+
+            fprintf(stderr,
+                    "Internal lexer error at %zu:%zu: input read failed.\n",
+                    lexer->line, lexer->column);
+
             return LEXER_INTERNAL_ERROR;
         }
 
@@ -73,6 +81,14 @@ static LexerStatus lexer_peek_char(Lexer *lexer, int *out_char) {
     if (character == EOF) {
         /* Distinguish a read error from normal EOF. */
         if (ferror(lexer->input)) {
+            if (ERRCODE == 0) {
+                ERRCODE = LEXER_INTERNAL_ERROR;
+            }
+
+            fprintf(stderr,
+                    "Internal lexer error at %zu:%zu: input read failed.\n",
+                    lexer->line, lexer->column);
+
             return LEXER_INTERNAL_ERROR;
         }
 
@@ -80,6 +96,14 @@ static LexerStatus lexer_peek_char(Lexer *lexer, int *out_char) {
     }
 
     if (ungetc(character, lexer->input) == EOF) {
+        if (ERRCODE == 0) {
+            ERRCODE = LEXER_INTERNAL_ERROR;
+        }
+
+        fprintf(stderr,
+                "Internal lexer error at %zu:%zu: character pushback failed.\n",
+                lexer->line, lexer->column);
+
         return LEXER_INTERNAL_ERROR;
     }
 
@@ -90,16 +114,31 @@ static LexerStatus lexer_peek_char(Lexer *lexer, int *out_char) {
 /**
  * @brief Allocates and initializes a lexer context.
  *
+ * Reports initialization failures to stderr and sets ERRCODE to 99
+ * if no previous compilation error has been recorded.
+ *
  * @param input Open readable input stream.
+ *
  * @return Initialized context, or NULL if input is NULL or allocation fails.
  */
 Lexer *lexer_create(FILE *input) {
     if (input == NULL) {
+        if (ERRCODE == 0) {
+            ERRCODE = LEXER_INTERNAL_ERROR;
+        }
+
+        fprintf(stderr, "Internal lexer error: input stream is NULL.\n");
         return NULL;
     }
 
     Lexer *lexer = malloc(sizeof *lexer);
+
     if (lexer == NULL) {
+        if (ERRCODE == 0) {
+            ERRCODE = LEXER_INTERNAL_ERROR;
+        }
+
+        fprintf(stderr, "Internal lexer error: lexer allocation failed.\n");
         return NULL;
     }
 
@@ -312,6 +351,14 @@ LexerStatus get_token(Lexer *lexer, Token *out_token) {
         }
 
         if (next_character != character) {
+            if (ERRCODE == 0) {
+                ERRCODE = LEXER_ERROR;
+            }
+
+            fprintf(stderr,
+                    "Lexical error at %zu:%zu: expected '%c' after '%c'.\n",
+                    out_token->line, out_token->column, character, character);
+
             return LEXER_ERROR;
         }
 
@@ -371,7 +418,16 @@ LexerStatus get_token(Lexer *lexer, Token *out_token) {
     }
 
     default:
-        /* TODO: Recognize the remaining tokens. */
+        /* TODO: Implement recognition of the remaining tokens. */
+        if (ERRCODE == 0) {
+            ERRCODE = LEXER_INTERNAL_ERROR;
+        }
+
+        fprintf(stderr,
+                "Internal lexer error at %zu:%zu: "
+                "token recognition is not implemented for byte 0x%02X.\n",
+                out_token->line, out_token->column, (unsigned int)character);
+
         return LEXER_INTERNAL_ERROR;
     }
 
