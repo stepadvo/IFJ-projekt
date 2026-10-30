@@ -7,270 +7,216 @@
  */
 
 #ifndef SYMTABLE_H
-    #define SYMTABLE_H
+#define SYMTABLE_H
 
-    #include <stdbool.h>
-    #include <stdlib.h>
+#include <stdbool.h>
+#include <stdlib.h>
 
-/** @brief the symbol table abstract data type */
-typedef struct SymTable symTable;
+#define MAX_BLOCKS 128
 
 /** @brief enum of the possible data types in IFJ26 */
-typedef enum { UNIT, INT, DOUBLE, STRING, BOOL, UNKNOWN } varType;
+typedef enum { UNIT, INT, DOUBLE, STRING, BOOL, UNKNOWN, NUMERIC, ANY } varType;
 
-/** @brief enum of the types of symbols in the table */
-//typedef enum { VAL, VAR, FUN } symType;
-
-///**
-// * @brief structure for data for each symbol in the table
-// *
-// * @details the structure will be created and allocated by function
-// * `insert...Symbol` and can be altered by user
-// */
-//typedef struct Symbol {
-//    symType symbolType;
-//
-//    union {
-//        // if the symbolType is VAR or VAL
-//        struct {
-//            varType dataType;
-//            bool isParam;
-//        } VarData;
-//
-//        // if the symbolType is FUN
-//        struct {
-//            varType retType;
-//            int paramCount;
-//            struct Symbol **params;
-//        } funData;
-//
-//    } symParams;
-//} symbol;
-//
-///**
-// * @brief initializes an empty symbol table
-// * @return a pointer to the initialized symbol table or NULL on failure
-// *
-// * @details An initialized table contains no symbols and no blocks
-// */
-//symTable *initSymTable();
-//
-///** @brief destructs a symbol table with all inserted symbols */
-//void destructSymTable(symTable *table);
-//
-///** @brief clears all symbols from the symbol table*/
-//void clearSymTable(symTable *table);
-//
-///**
-// * @brief creates a new "lowest" block
-// * @param table table in which the block is to be created
-// * @return new number of blocks (block depth) on success, -1 on failure (memory
-// * allocation error)
-// */
-//int beginBlock(symTable *table);
-//
-///**
-// * @brief ends the current block
-// * @param table table in which the block is to ble ended
-// * @return number of blocks (block depth) remaining on success, -1 on failure
-// * (there are no blocks to end)
-// *
-// * @details Ends the block whether it is empty or not
-// */
-//int endBlock(symTable *table);
-//
-///**
-// * @brief gets the number of blocks created
-// * @param table the table
-// */
-//int blockDepth(symTable *table);
-//
-///**
-// * @briefs adds an symbol to the current block of the symbol table
-// * @param table the table
-// * @param id the name of symbol, insertVarSymbol duplicates it to the symbol
-// * structure
-// * @param constant whether the value is constant (whether it is val or var)
-// * @param varType data type of the symbol
-// * @return ptr to the created symbol on success, NULL on failure (memory
-// * allocation error/id already in use)
-// *
-// * @detailsThe id must be unique within a block. If an id is identical as an id
-// * in a "higher" block, the id from the "higher" block is masked and can be used
-// * when the current block is ended.
-// */
-//symbol *insertVarSymbol(symTable *table, const char *id, bool constant,
-//                        varType varType);
-//
-///**
-// * @briefs adds an symbol to the current block of the symbol table
-// * @param table the table
-// * @param id the name of symbol, insertVarSymbol duplicates it to the symbol
-// * structure
-// * @param varType return data type of the function
-// * @param paramCount number of function parameters
-// * @param paramTypes an array on heap of parameter types.
-// * @param paramNames an array on heap of strings also on heap.
-// * @return ptr to the created symbol on success, NULL on failure (memory
-// * allocation error/id already in use)
-// *
-// * @details `insertFunSymbol` will take ownership of `paramTypes` and
-// * `paramNames` (responsibility for free())
-// * @details The id must be unique within a block. If an id is identical as an id
-// * in a "higher" block, the id from the "higher" block is masked and can be used
-// * when the current block is ended.
-// */
-//symbol *insertFunSymbol(symTable *table, const char *id, varType retType,
-//                        int paramCount, varType *paramTypes, char **paramNames);
-//
-///**
-// * @brief finds the symbol in the whole table starting from the current block
-// * and continuing outwards
-// * @param table the table
-// * @param id identifier of the symbol to be found
-// * @return parameters of the symbol found, NULL if not found
-// */
-//symbol *findSymbol(symTable *table, const char *id);
-//
-///**
-// * @brief finds the symbol only within the current block
-// * @param table the table
-// * @param id identifier of the symbol to be found
-// * @return ptr to the symbol if found, NULL if not found
-// */
-//symbol *findSymbolInCurrentBlock(symTable *table, const char *id);
-//
-
-
-
-
-typedef struct VSymTable vSymTable;
-
-typedef struct FSymTable fSymTable;
-
-extern fSymTable gFunctionTable;
-
-typedef struct VarSymbol {
-    char *id;
+/** @brief structe containing data about the var symbol (var or val) */
+typedef struct {
+    const char *id;
     varType dataType;
-    bool isParam;
-    bool isStatic;
-} varSymbol;
+    bool isTypeSet; /** true when the data type is already explicitely set,
+                       false when the data type is only expected */
+    bool isConst;   /** for parameters set to true */
+    int blockDepth;
+} varData;
 
-typedef struct FunSymbol {
-    char *id;
+/** @brief structe containing data about the function symbol */
+typedef struct {
+    const char *id;
     varType retType;
+    bool isTypeSet; /** true when the ret type is already explicitely set, false
+                       when the ret type is only expected */
     int paramCount;
-    varSymbol **params;
-    vSymTable *localTable;
-} funSymbol;
+} funData;
 
-/**
- * @brief initializes an empty var symbol table
- * @return a pointer to the var initialized symbol table or NULL on failure
- *
- * @details An initialized table contains no symbols and no blocks
- */
-vSymTable *initVSymTable();
-
-/** @brief destructs a var symbol table with all inserted symbols */
-void destructVSymTable(vSymTable *table);
-
-/** @brief clears all symbols from the var symbol table*/
-void clearVSymTable(vSymTable *table);
-
-/**
- * @brief creates a new "lowest" block
- * @param table var symbol table in which the block is to be created
- * @return new number of blocks (block depth) on success, -1 on failure (memory
- * allocation error)
- */
-int beginBlock(vSymTable *table);
-
-/**
- * @brief ends the current block
- * @param table var symbol table in which the block is to ble ended
- * @return number of blocks (block depth) remaining on success, -1 on failure
- * (there are no blocks to end)
- *
- * @details Ends the block whether it is empty or not
- */
-int endBlock(vSymTable *table);
-
-/**
- * @brief gets the number of blocks created
- * @param table the var symbol table
- */
-int blockDepth(vSymTable *table);
-
-/**
- * @briefs adds an symbol to the current block of the symbol table
- * @param table the var symbol table
- * @param id the name of symbol, insertVarSymbol duplicates it to the symbol
- * structure
- * @param constant whether the value is constant (whether it is val or var)
- * @param varType data type of the symbol
- * @return ptr to the created symbol on success, NULL on failure (memory
- * allocation error/id already in use)
- *
- * @detailsThe id must be unique within a block. If an id is identical as an id
- * in a "higher" block, the id from the "higher" block is masked and can be used
- * when the current block is ended.
- */
-varSymbol *insertVarSymbol(vSymTable *table, const char *id, bool constant,
-                        varType varType);
-
-/**
- * @brief finds the symbol in the whole table starting from the current block
- * and continuing outwards
- * @param table the var symbol table
- * @param id identifier of the symbol to be found
- * @return parameters of the symbol found, NULL if not found
- */
-varSymbol *findVarSymbol(vSymTable *table, const char *id);
-
-/**
- * @brief finds the symbol only within the current block
- * @param table the var symbol table
- * @param id identifier of the symbol to be found
- * @return ptr to the symbol if found, NULL if not found
- */
-varSymbol *findVarSymbolInCurrentBlock(vSymTable *table, const char *id);
-
+/** @brief structe containing data about the parameter symbol */
+typedef struct {
+    const char *id;
+    varType dataType;
+} paramData;
 
 /**
  * @brief initializes the global fun symbol table as empty
+ * @return 0 on success, -1 on memory allocation err
  */
-void initFSymTable(void);
+int symTableInit(void);
 
 /** @brief destructs the global fun symbol table */
-void destructFSymTable(void);
+void symTableDestruct(void);
 
 /** @brief clears all symbols from the global fun symbol table */
-void clearFSymTable(void);
+void symTableClear(void);
 
 /**
- * @briefs adds an symbol to the current block of the symbol table
- * @param id the name of function, insertVarSymbol duplicates it to the symbol
+ * @briefs adds a function symbol to the global symbol table
+ *
+ * @param id the name of function, symTableInsertFun copies it into the symbol
  * structure
- * @param varType return data type of the function
+ * @param varType return data type of the function (if UNKNOWN or NUMERIC, the
+ * retType will be initialized as not set, otherwise it will be set)
  * @param paramCount number of function parameters
- * @return ptr to the created symbol on success, NULL on failure (memory
- * allocation error/id already in use)
+ * @param params an array with the parameter data (inserted from left to right)
+ *
+ * @return 0 on succesfull insert, 1 when the id is already in use, -1 on memory
+ * allocation err
+ *
+ * @details when the id is already in use, the global table will not be changed
+ * @details the parameters will be numbered with their index in the input array
  */
-funSymbol *insertFunSymbol(const char *id, varType retType, int paramCount);
+int symTableInsertFun(const char *id, varType retType, int paramCount, paramData params[paramCount]);
 
 /**
- * @brief finds the symbol in the whole table starting from the current block
- * and continuing outwards
- * @param table the var symbol table
- * @param id identifier of the symbol to be found
- * @return parameters of the symbol found, NULL if not found
+ * @brief updates the return type as set
+ *
+ * @param active true when the updated function is the active function, false it
+ * is the function with matching id
+ * @param retType the new return type
+ *
+ * @return  0 when succesfully updated
+ *          1 when no function is active/there is no function with matching id
+ *          2 when the function retType has already been set (no changes to
+ * function)
  */
-varSymbol *findFunSymbol(const char *id);
+int symTableSetNewRetType(bool active, const char *id, varType newRetType);
 
+/**
+ * @brief finds the function in the global table
+ *
+ * @param id identifier of the symbol to be found
+ *
+ * @return data of the function, or {.id=NULL} when not found
+ */
+funData symTableFindFun(const char *id);
 
+/**
+ * @brief activates the function with matching id
+ *
+ * @return 0 on successfull find, -1 when the id is not found
+ *
+ * @details when no funciton is found, no function will be active
+ */
+int symTableActivateFun(const char *id);
 
+/**
+ * @brief gets of the active funciton
+ *
+ * @return {.id=NULL} if no function is active
+ */
+funData symTableGetActive(void);
+
+/**
+ * @brief adds an symbol to the current block of the local table of the active
+ * function
+ *
+ * @param id the name of symbol, symTableInsertVar duplicates it to the symbol
+ * structure
+ * @param dataType data type of the symbol (if the type is UNKNOWN or NUMERIC
+ * the dataType will be initialized as not set, otherwise it will be set)
+ * @param isConst whether the value is constant (whether it is val or var)
+ *
+ * @return  0 on success
+ *          1 when the id is already in use within the current block
+ *          2 when no function is active
+ *          -1 on memory allocation error
+ *
+ * @details The id must be unique within a block. If an id is identical as an id
+ * in a "higher" block, the id from the "higher" block is masked and can be used
+ * when the current block is ended
+ */
+int symTableInsertVar(const char *id, varType dataType, bool isConst);
+
+/**
+ * @brief finds the var symbol with id in the active function and updates its
+ * dataType
+ *
+ * @return  0 on success
+ *          1 when no function is active
+ *          2 when there is no var with matching id
+ *          3 when the found var is a parameter
+ *          4 when the data type is already set
+ *
+ * @details finds the symbol the same way as @ref symTableFindVar
+ */
+int symTableSetNewVarType(const char *id, varType dataType);
+
+/**
+ * @brief finds the symbol in the whole table int the active function starting
+ * from the current block and continuing outwards (searches both local variables
+ * and parameters. Parameters will behave as a local variable on the first block)
+ *
+ * @param id identifier of the symbol to be found
+ *
+ * @return  data of the variable when found
+ *          {.id = NULL, .dataType = UNKNOWN, .isConst = true} when not found
+ *          {.id = NULL, .dataType = UNKNOWN, .isConst = false} when no function
+ * is active
+ */
+varData symTableFindVar(const char *id);
+
+/**
+ * @brief finds the symbol only within the current block of the active function
+ *
+ * @param id identifier of the symbol to be found
+ *
+ * @return  data of the variable when found
+ *          {.id = NULL, .dataType = UNKNOWN, .isConst = true} when not found
+ *          {.id = NULL, .dataType = UNKNOWN, .isConst = false} when no function
+ * is active
+ *
+ * @details when in the first block, both the local variables and parameters are searched
+ * @details when blockDepth < 1, only the parameters are searched
+ */
+varData symTableFindVarCurrBlock(const char *id);
+
+/**
+ * @brief gets the number-th parameter of a function
+ *
+ * @return  data of the variable when the param is found
+ *          {.id = NULL, .dataType = UNKNOWN} when no function
+ *              is active / no function with matching id exists
+ *          {.id = NULL, .dataType = NUMERIC} when the
+ *              function doesn't have parameter with this number
+ *
+ * @details if active == true, the active function will be searched and id will
+ * not be taken into account
+ * @details if active == false, the function with id will be found and searched
+ */
+paramData symTableGetParam(bool active, const char *id, int number);
+
+/**
+ * @brief creates a new "lowest" block in the active function
+ *
+ * @return  new number of blocks (block depth) on success
+ *          -1 if no function is active
+ *
+ * @details no changes, when the MAX_BLOCKS is exceeded
+ */
+int beginBlock(void);
+
+/**
+ * @brief ends the current block in the active function
+ *
+ * @return  number of blocks (block depth) remaining on success
+ *          -1 when no function is active
+ *
+ * @details ends the block whether it is empty or not
+ * @details no changes, when there are no more blocks to end (blockDepth < 1)
+ */
+int endBlock(void);
+
+/**
+ * @brief gets the block depth of the active function
+ *
+ * @returns the block depth (positive number) or -1 when no function is active
+ */
+int symTableBlockDepth(void);
 
 #endif
 
