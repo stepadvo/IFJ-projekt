@@ -23,6 +23,10 @@ struct Lexer {
     size_t paren_depth;  /**< Number of currently open parentheses. */
     bool newline_since_token; /**< Whether an LF occurred since the last actual
                                  token. */
+    size_t physical_indent; /**< Leading spaces on the current physical line. */
+    bool at_physical_line_start; /**< Whether only leading spaces have been
+                                    read. */
+    size_t leading_tab_column; /**< First leading tab column; zero if absent. */
 };
 
 /**
@@ -148,6 +152,9 @@ Lexer *lexer_create(FILE *input) {
     lexer->line_has_token = false;
     lexer->paren_depth = 0;
     lexer->newline_since_token = false;
+    lexer->physical_indent = 0;
+    lexer->at_physical_line_start = true;
+    lexer->leading_tab_column = 0;
 
     return lexer;
 }
@@ -195,10 +202,48 @@ LexerStatus get_token(Lexer *lexer, Token *out_token) {
             return status;
         }
 
+        if (character == ' ') {
+            if (lexer->at_physical_line_start) {
+                lexer->physical_indent++;
+            }
+
+            continue;
+        }
+
+        if (character == '\t') {
+            if (lexer->at_physical_line_start &&
+                lexer->leading_tab_column == 0) {
+                lexer->leading_tab_column = out_token->column;
+            }
+
+            continue;
+        }
+
         if (character != '\n') {
+            lexer->at_physical_line_start = false;
+
+            if (lexer->leading_tab_column != 0) {
+                size_t tab_column = lexer->leading_tab_column;
+                lexer->leading_tab_column = 0;
+
+                if (ERRCODE == 0) {
+                    ERRCODE = LEXER_ERROR;
+                }
+
+                fprintf(stderr,
+                        "Lexical error at %zu:%zu: "
+                        "tab is not allowed in indentation.\n",
+                        out_token->line, tab_column);
+
+                return LEXER_ERROR;
+            }
+
             break;
         }
 
+        lexer->physical_indent = 0;
+        lexer->at_physical_line_start = true;
+        lexer->leading_tab_column = 0;
         lexer->newline_since_token = true;
 
         if (lexer->paren_depth == 0 && lexer->line_has_token) {
@@ -433,6 +478,11 @@ LexerStatus get_token(Lexer *lexer, Token *out_token) {
 
     out_token->type = type;
     out_token->starts_logical_line = !lexer->line_has_token;
+
+    if (out_token->starts_logical_line) {
+        out_token->indent = lexer->physical_indent;
+    }
+
     out_token->newline_before = lexer->newline_since_token;
 
     lexer->line_has_token = true;
