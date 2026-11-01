@@ -1,12 +1,14 @@
 /**
- * @file src_example.h
- * @brief example header
- * @author Name Surname, xlogin@stud.fit.vutbr.cz
- *
- * detailed description
+ * @file symtable.c
+ * @brief implementation of the symbol table
+ * @author Štěpán Dvořák, xdvoras00@stud.fit.vutbr.cz
  */
 
 #include "symtable.h"
+#include "bst.h"
+#include <bits/types/locale_t.h>
+#include <stdlib.h>
+#include <stdbool.h>
 
 /**
  * @brief private symbol data structure
@@ -14,12 +16,301 @@
  * contains both the symbol data accesible to the user and internal data, that
  * the user should not change
  */
-typedef struct SymbolPrivate {
-    symbol publicData;
-    size_t blockDepth;
-    size_t dataMasked; // the data that this entry masked in the BST
-} symbolPrivate;
+typedef struct {
+    varData pubData;
+
+    int dataMasked; // the data that this entry masked in the BST, -1 if no data is masked
+    // maybe something for unset data type checking
+} varDataPriv;
+
+typedef struct {
+    varDataPriv *varArr;
+    int varCount;
+} varBlock;
+
+typedef struct {
+    bst_t *tree;
+
+    int blockNum;
+    int blockTops[MAX_BLOCKS]; // array of indexes in varArr, where the top of the block is (highest index not occupied by the block)
+    varDataPriv *varArr;
+    int varArrCapacity;
+    // varArrSize is blockTops[blockNum]
+} vSymTable;
+
+typedef struct {
+    funData pubData;
+
+    vSymTable localTable;
+} funDataPriv;
+
+typedef struct {
+    bst_t *tree;
+
+    funDataPriv *active;
+
+    funDataPriv *nodeArr;
+    int nodeArrSize;
+    int nodeArrCapacity;
+} fSymTable;
+
+fSymTable gFunctionTable;
+
+//helper function declarations
+/** @brief initializes the local vSymTable */
+int locSymTableInit(vSymTable *table, int paramCount, paramData params[paramCount]);
+
+/** @brief destructs the local vSymTable */
+void locSymTableDestruct(vSymTable *table);
+
+/**
+ * @brief if active == true, checks if a function is active, else finds function with matching id
+ *
+ * @return NULL when active==true and no function is active or active==false and function with id isn't found
+ */
+funDataPriv *getFun(bool active, const char *id);
+
+
+int symTableInit(void) {
+    gFunctionTable.tree = BSTInit();
+    if (!gFunctionTable.tree) {
+        return -1;
+    }
+
+    gFunctionTable.nodeArr = gFunctionTable.active = NULL;
+    gFunctionTable.nodeArrSize = gFunctionTable.nodeArrCapacity = 0;
+    return 0;
+}
+
+void symTableDestruct(void) {
+    for (int i = 0; i < gFunctionTable.nodeArrSize; i++) {
+        locSymTableDestruct(&gFunctionTable.nodeArr[i].localTable);
+    }
+    BSTDestruct(gFunctionTable.tree);
+    free(gFunctionTable.nodeArr);
+}
+
+void symTableClear(void) {
+    for (int i = 0; i < gFunctionTable.nodeArrSize; i++) {
+        locSymTableDestruct(&gFunctionTable.nodeArr[i].localTable);
+    }
+    BSTClear(gFunctionTable.tree);
+    gFunctionTable.active = NULL;
+    gFunctionTable.nodeArrSize = 0;
+}
+
+int symTableInsertFun(const char *id, varType retType, int paramCount, paramData params[paramCount]) {
+
+}
+
+int symTableSetNewRetType(bool active, const char *id, varType newRetType) {
+
+}
+
+funData symTableFindFun(const char *id) {
+    size_t *foundFun = BSTSearch(gFunctionTable.tree, id);
+
+    if (!foundFun) return (funData){.id = NULL};
+
+    return gFunctionTable.nodeArr[*foundFun].pubData;
+}
+
+int symTableActivateFun(const char *id) {
+    size_t *foundFun = BSTSearch(gFunctionTable.tree, id);
+
+    if (!foundFun) {
+        gFunctionTable.active = NULL;
+        return -1;
+    }
+
+    gFunctionTable.active = gFunctionTable.nodeArr + *foundFun;
+    return 0;
+}
+
+funData symTableGetActive(void) {
+    if (!gFunctionTable.active) return (funData){.id = NULL};
+    return gFunctionTable.active->pubData;
+}
+
+int symTableInsertVar(const char *id, varType dataType, bool isConst) {
+
+}
+
+int symTableSetNewVarType(const char *id, varType dataType) {
+    if (!gFunctionTable.active) return 1;
+
+    // find the id in the local table
+    size_t *foundVarIdxP = BSTSearch(gFunctionTable.active->localTable.tree, id);
+
+    // check if found
+    if (!foundVarIdxP) return 2;
+
+    varDataPriv *foundVar = &gFunctionTable.active->localTable.varArr[*foundVarIdxP];
+    if (foundVar->pubData.blockDepth <= 0) return 3; // the var is a parameter
+    if (foundVar->pubData.isTypeSet) return 4; // the data type is already set
+
+    foundVar->pubData.dataType = dataType;
+    foundVar->pubData.isTypeSet = true;
+    return 0;
+}
+
+varData symTableFindVar(const char *id) {
+    if (!gFunctionTable.active) return (varData){NULL, UNKNOWN, false};
+
+    vSymTable *locTable = &gFunctionTable.active->localTable;
+    size_t *varIdxP = BSTSearch(locTable->tree, id);
+
+    // check if it is found
+    if (!varIdxP) return (varData){NULL, UNKNOWN, true};
+
+    return locTable->varArr[*varIdxP].pubData;
+}
+
+varData symTableFindVarCurrBlock(const char *id) {
+    if (!gFunctionTable.active) return (varData){NULL, UNKNOWN, false};
+
+    vSymTable *locTable = &gFunctionTable.active->localTable;
+    size_t *varIdxP = BSTSearch(locTable->tree, id);
+
+    // check if it is found
+    if (!varIdxP) return (varData){NULL, UNKNOWN, true};
+
+    varData foundVar = locTable->varArr[*varIdxP].pubData;
+    // check if it is in the current block (works for all blocks excepth block #1)
+    if (foundVar.blockDepth == locTable->blockNum) {
+        // return the public data
+        return foundVar;
+    }
+
+    // chekc if we are in block #1 and the foundVar is a parameter
+    if (locTable->blockNum == 1 && foundVar.blockDepth == 0) {
+        return foundVar;
+    }
+
+    // else foundVar is not in current block
+    return (varData){NULL, UNKNOWN, true};
+
+}
+
+paramData symTableGetParam(bool active, const char *id, int number) {
+    // check if the function exists
+    funDataPriv *fun = getFun(active, id);
+
+    if (!fun) return (paramData){NULL, UNKNOWN};
+
+    // check if the parameter exists
+    if (number >= fun->pubData.paramCount) return (paramData){NULL, NUMERIC};
+
+    varData param = fun->localTable.varArr[number].pubData;
+    return (paramData){param.id, param.dataType};
+}
+
+int beginBlock(void) {
+    if (!gFunctionTable.active) return -1;
+
+    vSymTable *locTable = &gFunctionTable.active->localTable;
+
+    // check if number of blocks exceeded (return the maximum value)
+    if (locTable->blockNum >= MAX_BLOCKS-1) return MAX_BLOCKS-1;
+
+    // set the top of the new block as the top of the previous block
+    locTable->blockTops[locTable->blockNum+1] = locTable->blockTops[locTable->blockNum];
+    return locTable->blockNum++;
+}
+
+int endBlock(void) {
+    if (!gFunctionTable.active) return -1;
+
+    vSymTable *locTable = &gFunctionTable.active->localTable;
+
+    // check if there are no more blocks to end
+    if (locTable->blockNum <= 0) return 0;
+
+    // remove all the variables from the BST
+    size_t *masked;
+    for (int i = locTable->blockTops[locTable->blockNum-1]; i < locTable->blockTops[locTable->blockNum]; i++) {
+        varDataPriv varInBlock = locTable->varArr[i];
+        if (varInBlock.dataMasked >= 0) {
+            // if the variable masked anything
+            // find the entry in the BST and replace the index of the variable in block with the masked index
+            masked = BSTSearch(locTable->tree, varInBlock.pubData.id);
+            *masked = varInBlock.dataMasked;
+        }
+        else {
+            // remove the variable from the BST
+            BSTRemove(locTable->tree, varInBlock.pubData.id, NULL);
+        }
+    }
+
+    // decrease the number of blocks
+    return locTable->blockNum--;
+}
+
+int symTableBlockDepth(void) {
+    if (!gFunctionTable.active) return -1;
+
+    return gFunctionTable.active->localTable.blockNum;
+}
+
+
+// helper function implementations
+int locSymTableInit(vSymTable *table, int paramCount, paramData params[paramCount]) {
+    // initialize the 0-th block (used for parameters)
+    varDataPriv *paramArr = malloc(sizeof(varDataPriv)*paramCount);
+    if (!paramArr) return -1;
+
+    table->tree = BSTInit();
+    if (!table->tree) {
+        // if the initialization is unsuccessfull
+        free(paramArr);
+        return -1;
+    }
+
+    // insert the parameters into the 0-th block
+    char *key; // for holding the ptr to the id
+    for (int i = 0; i < paramCount; i++) {
+        if (BSTInsert(table->tree, params[i].id, i, &key) != 0){
+            // if an insert is unsuccessfull
+            BSTDestruct(table->tree);
+            free(paramArr);
+            return -1;
+        }
+        varDataPriv param = {key, params[0].dataType, true, true, 0, -1};
+        paramArr[i] = param;
+    }
+
+    table->blockNum = 0;
+    table->blockTops[0] = paramCount;
+    table->varArr = paramArr;
+    table->varArrCapacity = paramCount;
+
+    return 0;
+}
+
+void locSymTableDestruct(vSymTable *table) {
+    BSTDestruct(table->tree);
+    free(table->varArr);
+}
+
+funDataPriv *getFun(bool active, const char *id) {
+    // ptr to the function to search, default to the active function
+    funDataPriv *fun = gFunctionTable.active;
+
+    if (active) {
+        // check if a function is active
+        if (!fun) return NULL;
+    }
+    else {
+        // check if funciton named id is found
+        size_t *funIndex = BSTSearch(gFunctionTable.tree, id);
+        if (!funIndex) return NULL;
+
+        // set the fun ptr as a ptr to the (*funIndex)th element
+        fun = gFunctionTable.nodeArr + (*funIndex);
+    }
+    return fun;
+}
 
 /*
- * end src_example.h
+ * end symtable.c
  */

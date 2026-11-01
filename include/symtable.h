@@ -70,7 +70,8 @@ void symTableClear(void);
  * @details when the id is already in use, the global table will not be changed
  * @details the parameters will be numbered with their index in the input array
  */
-int symTableInsertFun(const char *id, varType retType, int paramCount, paramData params[paramCount]);
+int symTableInsertFun(const char *id, varType retType, int paramCount,
+                      paramData params[paramCount]);
 
 /**
  * @brief updates the return type as set
@@ -149,7 +150,8 @@ int symTableSetNewVarType(const char *id, varType dataType);
 /**
  * @brief finds the symbol in the whole table int the active function starting
  * from the current block and continuing outwards (searches both local variables
- * and parameters. Parameters will behave as a local variable on the first block)
+ * and parameters. Parameters will behave as a local variable on the first
+ * block)
  *
  * @param id identifier of the symbol to be found
  *
@@ -170,7 +172,8 @@ varData symTableFindVar(const char *id);
  *          {.id = NULL, .dataType = UNKNOWN, .isConst = false} when no function
  * is active
  *
- * @details when in the first block, both the local variables and parameters are searched
+ * @details when in the first block, both the local variables and parameters are
+ * searched
  * @details when blockDepth < 1, only the parameters are searched
  */
 varData symTableFindVarCurrBlock(const char *id);

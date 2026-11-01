@@ -5,9 +5,9 @@
  */
 
 #ifndef BST_H
-    #define BST_H
+#define BST_H
 
-    #include <stdlib.h>
+#include <stdlib.h>
 
 /**
  * @brief a binary search tree implemented as an AVL tree
@@ -43,7 +43,7 @@ void BSTClear(bst_t *tree);
  *
  * if the key is duplicite, there will be no change to the tree
  */
-int BSTInsert(bst_t *tree, const char *key, size_t data);
+int BSTInsert(bst_t *tree, const char *key, size_t data, char **keyPtr);
 
 /**
  * @brief removes the element with the matching key from the tree
