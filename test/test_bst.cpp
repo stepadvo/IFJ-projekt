@@ -32,10 +32,19 @@ TEST_F(BstTest, InitState) {
     EXPECT_EQ(BSTSearch(tree, "nonexistent"), nullptr);
 }
 
+TEST_F(BstTest, NullSafety) {
+    // BSTDestruct, BSTInsert and BSTClear should handle NULL
+    BSTDestruct(nullptr);
+    BSTClear(nullptr);
+    EXPECT_EQ(BSTInsert(tree, "key", 0, nullptr), 0);
+    EXPECT_EQ(BSTSize(nullptr), 0);
+    EXPECT_EQ(BSTSearch(nullptr, "key"), nullptr);
+}
+
 TEST_F(BstTest, InsertAndSearch) {
-    EXPECT_EQ(BSTInsert(tree, "apple", 10), 0);
-    EXPECT_EQ(BSTInsert(tree, "banana", 20), 0);
-    EXPECT_EQ(BSTInsert(tree, "cherry", 30), 0);
+    EXPECT_EQ(BSTInsert(tree, "apple", 10, nullptr), 0);
+    EXPECT_EQ(BSTInsert(tree, "banana", 20, nullptr), 0);
+    EXPECT_EQ(BSTInsert(tree, "cherry", 30, nullptr), 0);
 
     EXPECT_EQ(BSTSize(tree), 3);
 
@@ -55,9 +64,9 @@ TEST_F(BstTest, InsertAndSearch) {
 }
 
 TEST_F(BstTest, DuplicateKeys) {
-    EXPECT_EQ(BSTInsert(tree, "apple", 10), 0);
+    EXPECT_EQ(BSTInsert(tree, "apple", 10, nullptr), 0);
     // Attempt duplicate insertion
-    EXPECT_EQ(BSTInsert(tree, "apple", 99), -2);
+    EXPECT_EQ(BSTInsert(tree, "apple", 99, nullptr), -2);
 
     // Verify size hasn't changed and original value is intact
     EXPECT_EQ(BSTSize(tree), 1);
@@ -67,9 +76,9 @@ TEST_F(BstTest, DuplicateKeys) {
 }
 
 TEST_F(BstTest, RemoveNodes) {
-    BSTInsert(tree, "dog", 1);
-    BSTInsert(tree, "cat", 2);
-    BSTInsert(tree, "bird", 3);
+    BSTInsert(tree, "dog", 1, nullptr);
+    BSTInsert(tree, "cat", 2, nullptr);
+    BSTInsert(tree, "bird", 3, nullptr);
 
     size_t oldData = 0;
 
@@ -86,33 +95,25 @@ TEST_F(BstTest, RemoveNodes) {
 
 TEST_F(BstTest, AVLBalanceMaintained) {
     // Inserting sequential elements forces AVL rotations
-    BSTInsert(tree, "a", 1);
-    BSTInsert(tree, "b", 2);
-    BSTInsert(tree, "c", 3);
-    BSTInsert(tree, "d", 4);
-    BSTInsert(tree, "e", 5);
+    BSTInsert(tree, "a", 1, nullptr);
+    BSTInsert(tree, "b", 2, nullptr);
+    BSTInsert(tree, "c", 3, nullptr);
+    BSTInsert(tree, "d", 4, nullptr);
+    BSTInsert(tree, "e", 5, nullptr);
 
     EXPECT_EQ(BSTSize(tree), 5);
     EXPECT_NE(BSTIsBalanced(tree), 0);
 }
 
 TEST_F(BstTest, ClearTree) {
-    BSTInsert(tree, "one", 1);
-    BSTInsert(tree, "two", 2);
+    BSTInsert(tree, "one", 1, nullptr);
+    BSTInsert(tree, "two", 2, nullptr);
     EXPECT_EQ(BSTSize(tree), 2);
 
     BSTClear(tree);
     EXPECT_EQ(BSTSize(tree), 0);
     EXPECT_EQ(BSTSearch(tree, "one"), nullptr);
     EXPECT_NE(BSTIsBalanced(tree), 0);
-}
-
-TEST_F(BstTest, NullSafety) {
-    // BSTDestruct and BSTClear should handle NULL
-    BSTDestruct(nullptr);
-    BSTClear(nullptr);
-    EXPECT_EQ(BSTSize(nullptr), 0);
-    EXPECT_EQ(BSTSearch(nullptr, "key"), nullptr);
 }
 
 int main(int argc, char **argv) {

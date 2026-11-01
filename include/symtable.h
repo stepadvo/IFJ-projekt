@@ -62,7 +62,8 @@ void symTableClear(void);
  * @param varType return data type of the function (if UNKNOWN or NUMERIC, the
  * retType will be initialized as not set, otherwise it will be set)
  * @param paramCount number of function parameters
- * @param params an array with the parameter data (inserted from left to right)
+ * @param params an array with the parameter data of size paramCount (inserted
+ * from left to right)
  *
  * @return 0 on succesfull insert, 1 when the id is already in use, -1 on memory
  * allocation err
@@ -71,7 +72,7 @@ void symTableClear(void);
  * @details the parameters will be numbered with their index in the input array
  */
 int symTableInsertFun(const char *id, varType retType, int paramCount,
-                      paramData params[paramCount]);
+                      paramData params[]);
 
 /**
  * @brief updates the return type as set

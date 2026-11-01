@@ -76,7 +76,7 @@ void BSTClear(bst_t *tree) {
  * @brief constructs a new leaf node on the heap
  * @return ptr to the node or NULL on memory allocation error
  */
-bstNode_t *createNode(const char *key, size_t data, int *err) {
+bstNode_t *createNode(const char *key, size_t data, int *err, char **keyPtr) {
     bstNode_t *temp = malloc(sizeof(bstNode_t));
     if (!temp) {
         // TODO set errcode
@@ -91,6 +91,8 @@ bstNode_t *createNode(const char *key, size_t data, int *err) {
         *err = -1;
         return NULL;
     }
+    // return the pointer to the created id
+    *keyPtr = tempKey;
 
     temp->key = tempKey;
     strcpy(temp->key, key);
@@ -211,16 +213,16 @@ bstNode_t *BSTBalanceTree(bstNode_t *node) {
  * BSTInsert
  * @return a ptr to the new root
  */
-bstNode_t *BSTInsert_R(bstNode_t *root, const char *key, size_t data,
-                       int *err) {
+bstNode_t *BSTInsert_R(bstNode_t *root, const char *key, size_t data, int *err,
+                       char **keyPtr) {
     if (!root) {
-        return createNode(key, data, err);
+        return createNode(key, data, err, keyPtr);
     }
     int result = strcmp(key, root->key);
     if (result < 0) {
-        root->left = BSTInsert_R(root->left, key, data, err);
+        root->left = BSTInsert_R(root->left, key, data, err, keyPtr);
     } else if (result > 0) {
-        root->right = BSTInsert_R(root->right, key, data, err);
+        root->right = BSTInsert_R(root->right, key, data, err, keyPtr);
     } else {
         // duplicite data now allowed
         *err = -2;
@@ -234,9 +236,12 @@ bstNode_t *BSTInsert_R(bstNode_t *root, const char *key, size_t data,
     return BSTBalanceTree(root);
 }
 
-int BSTInsert(bst_t *tree, const char *key, size_t data) {
+int BSTInsert(bst_t *tree, const char *key, size_t data, char **keyPtr) {
     int errcode;
-    tree->root = BSTInsert_R(tree->root, key, data, &errcode);
+    char *discard;
+    if (!keyPtr)
+        keyPtr = &discard;
+    tree->root = BSTInsert_R(tree->root, key, data, &errcode, keyPtr);
     return errcode;
 }
 
