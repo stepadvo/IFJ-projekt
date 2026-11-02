@@ -39,6 +39,9 @@ typedef enum {
  * The input stream must remain open while the lexer is in use. Destroying
  * the lexer does not close the stream.
  *
+ * Reports initialization failures to stderr and sets ERRCODE to 99
+ * if no previous compilation error has been recorded.
+ *
  * @param input Open readable stream, typically stdin.
  * @return Pointer to the new lexer context, or NULL if allocation fails
  *         or input is NULL.
@@ -63,9 +66,9 @@ Lexer *lexer_create(FILE *input);
  * reported through newline_before. Indentation is returned as the number
  * of spaces in indent on the first actual token of a logical line.
  *
- * This function never terminates the program. Diagnostics are reported
- * through the shared error-reporting mechanism, which preserves the first
- * compilation error in the global error code.
+ * This function never terminates the program. Errors are reported to
+ * stderr and stored in ERRCODE if no previous compilation error has
+ * been recorded.
  *
  * After a recoverable lexical error, the caller may request another token.
  * After an internal error, the caller must clean up and stop reading.

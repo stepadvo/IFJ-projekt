@@ -6,9 +6,11 @@
  * Implements lexer context management, character reading, source position
  * tracking, and token recognition.
  */
-
 #include "lexer.h"
+#include "compiler.h"
+#include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 /**
  * @struct Lexer
@@ -23,6 +25,12 @@ struct Lexer {
     size_t paren_depth;  /**< Number of currently open parentheses. */
     bool newline_since_token; /**< Whether an LF occurred since the last actual
                                  token. */
+    size_t physical_indent; /**< Leading spaces on the current physical line. */
+    bool at_physical_line_start; /**< Whether only leading spaces have been
+                                    read. */
+    size_t leading_tab_column; /**< First leading tab column; zero if absent. */
+    size_t logical_indent; /**< Indentation of the logical line's first physical
+                              line. */
 };
 
 /**
@@ -40,6 +48,14 @@ static LexerStatus lexer_read_char(Lexer *lexer, int *out_char) {
     if (character == EOF) {
         /* Distinguish a read error from normal EOF. */
         if (ferror(lexer->input)) {
+            if (ERRCODE == 0) {
+                ERRCODE = LEXER_INTERNAL_ERROR;
+            }
+
+            fprintf(stderr,
+                    "Internal lexer error at %zu:%zu: input read failed.\n",
+                    lexer->line, lexer->column);
+
             return LEXER_INTERNAL_ERROR;
         }
 
@@ -73,6 +89,14 @@ static LexerStatus lexer_peek_char(Lexer *lexer, int *out_char) {
     if (character == EOF) {
         /* Distinguish a read error from normal EOF. */
         if (ferror(lexer->input)) {
+            if (ERRCODE == 0) {
+                ERRCODE = LEXER_INTERNAL_ERROR;
+            }
+
+            fprintf(stderr,
+                    "Internal lexer error at %zu:%zu: input read failed.\n",
+                    lexer->line, lexer->column);
+
             return LEXER_INTERNAL_ERROR;
         }
 
@@ -80,6 +104,14 @@ static LexerStatus lexer_peek_char(Lexer *lexer, int *out_char) {
     }
 
     if (ungetc(character, lexer->input) == EOF) {
+        if (ERRCODE == 0) {
+            ERRCODE = LEXER_INTERNAL_ERROR;
+        }
+
+        fprintf(stderr,
+                "Internal lexer error at %zu:%zu: character pushback failed.\n",
+                lexer->line, lexer->column);
+
         return LEXER_INTERNAL_ERROR;
     }
 
@@ -88,18 +120,181 @@ static LexerStatus lexer_peek_char(Lexer *lexer, int *out_char) {
 }
 
 /**
+ * @brief Classifies a complete identifier-like word.
+ *
+ * @param text Null-terminated word.
+ * @return Keyword type, TOKEN_BOOL_LITERAL, or TOKEN_IDENTIFIER.
+ */
+static TokenType lexer_identifier_type(const char *text) {
+    static const struct {
+        const char *text;
+        TokenType type;
+    } keywords[] = {{"def", TOKEN_KW_DEF},
+                    {"do", TOKEN_KW_DO},
+                    {"Double", TOKEN_KW_DOUBLE},
+                    {"else", TOKEN_KW_ELSE},
+                    {"if", TOKEN_KW_IF},
+                    {"import", TOKEN_KW_IMPORT},
+                    {"Int", TOKEN_KW_INT},
+                    {"return", TOKEN_KW_RETURN},
+                    {"String", TOKEN_KW_STRING},
+                    {"then", TOKEN_KW_THEN},
+                    {"Unit", TOKEN_KW_UNIT},
+                    {"val", TOKEN_KW_VAL},
+                    {"var", TOKEN_KW_VAR},
+                    {"while", TOKEN_KW_WHILE},
+                    {"Boolean", TOKEN_KW_BOOLEAN},
+                    {"for", TOKEN_KW_FOR},
+                    {"case", TOKEN_KW_CASE},
+                    {"class", TOKEN_KW_CLASS},
+                    {"extension", TOKEN_KW_EXTENSION},
+                    {"List", TOKEN_KW_LIST},
+                    {"match", TOKEN_KW_MATCH},
+                    {"type", TOKEN_KW_TYPE},
+                    {"true", TOKEN_BOOL_LITERAL},
+                    {"false", TOKEN_BOOL_LITERAL}};
+
+    for (size_t i = 0; i < sizeof keywords / sizeof keywords[0]; i++) {
+        if (strcmp(text, keywords[i].text) == 0) {
+            return keywords[i].type;
+        }
+    }
+
+    return TOKEN_IDENTIFIER;
+}
+
+/**
+ * @brief Reads an identifier whose first character is already consumed.
+ *
+ * @param lexer Initialized lexer context.
+ * @param first_character Consumed letter or underscore.
+ * @param out_text Receives owned text on success; unchanged on error.
+ * @return LEXER_OK, LEXER_ERROR for a standalone underscore,
+ *         or LEXER_INTERNAL_ERROR on allocation or input failure.
+ */
+static LexerStatus lexer_read_identifier(Lexer *lexer, int first_character,
+                                         TokenText *out_text) {
+    size_t length = 0;
+    size_t capacity = 32;
+    char *buffer = malloc(capacity);
+
+    if (buffer == NULL) {
+        goto allocation_error;
+    }
+
+    int character = first_character;
+
+    while (true) {
+        /* Keep one free byte for the terminating '\0'. */
+        if (length == capacity - 1) {
+            if (capacity > SIZE_MAX / 2) {
+                goto allocation_error;
+            }
+
+            size_t new_capacity = capacity * 2;
+            char *new_buffer = realloc(buffer, new_capacity);
+
+            if (new_buffer == NULL) {
+                goto allocation_error;
+            }
+
+            buffer = new_buffer;
+            capacity = new_capacity;
+        }
+
+        buffer[length++] = (char)character;
+
+        int next_character;
+        LexerStatus status = lexer_peek_char(lexer, &next_character);
+
+        if (status != LEXER_OK) {
+            free(buffer);
+            return status;
+        }
+
+        bool continues_identifier =
+            (next_character >= 'a' && next_character <= 'z') ||
+            (next_character >= 'A' && next_character <= 'Z') ||
+            (next_character >= '0' && next_character <= '9') ||
+            next_character == '_';
+
+        if (!continues_identifier) {
+            break;
+        }
+
+        status = lexer_read_char(lexer, &character);
+
+        if (status != LEXER_OK) {
+            free(buffer);
+            return status;
+        }
+    }
+
+    buffer[length] = '\0';
+
+    if (length == 1 && buffer[0] == '_') {
+        free(buffer);
+
+        if (ERRCODE == 0) {
+            ERRCODE = LEXER_ERROR;
+        }
+
+        fprintf(stderr,
+                "Lexical error at %zu:%zu: "
+                "standalone underscore is not an identifier.\n",
+                lexer->line, lexer->column - 1);
+
+        return LEXER_ERROR;
+    }
+
+    out_text->data = buffer;
+    out_text->length = length;
+
+    return LEXER_OK;
+
+allocation_error:
+    free(buffer);
+
+    if (ERRCODE == 0) {
+        ERRCODE = LEXER_INTERNAL_ERROR;
+    }
+
+    fprintf(stderr,
+            "Internal lexer error at %zu:%zu: "
+            "identifier buffer allocation failed.\n",
+            lexer->line, lexer->column);
+
+    return LEXER_INTERNAL_ERROR;
+}
+
+/**
  * @brief Allocates and initializes a lexer context.
  *
+ * Reports initialization failures to stderr and sets ERRCODE to 99
+ * if no previous compilation error has been recorded.
+ *
  * @param input Open readable input stream.
+ *
  * @return Initialized context, or NULL if input is NULL or allocation fails.
  */
 Lexer *lexer_create(FILE *input) {
     if (input == NULL) {
+        if (ERRCODE == 0) {
+            ERRCODE = LEXER_INTERNAL_ERROR;
+        }
+
+        fprintf(stderr, "Internal lexer error: input stream is NULL.\n");
         return NULL;
     }
 
     Lexer *lexer = malloc(sizeof *lexer);
+
     if (lexer == NULL) {
+        if (ERRCODE == 0) {
+            ERRCODE = LEXER_INTERNAL_ERROR;
+        }
+
+        fprintf(stderr, "Internal lexer error: lexer allocation failed.\n");
         return NULL;
     }
 
@@ -109,6 +304,10 @@ Lexer *lexer_create(FILE *input) {
     lexer->line_has_token = false;
     lexer->paren_depth = 0;
     lexer->newline_since_token = false;
+    lexer->physical_indent = 0;
+    lexer->at_physical_line_start = true;
+    lexer->leading_tab_column = 0;
+    lexer->logical_indent = 0;
 
     return lexer;
 }
@@ -156,10 +355,64 @@ LexerStatus get_token(Lexer *lexer, Token *out_token) {
             return status;
         }
 
+        if (character == ' ') {
+            if (lexer->at_physical_line_start) {
+                lexer->physical_indent++;
+            }
+
+            continue;
+        }
+
+        if (character == '\t') {
+            if (lexer->at_physical_line_start &&
+                lexer->leading_tab_column == 0) {
+                lexer->leading_tab_column = out_token->column;
+            }
+
+            continue;
+        }
+
         if (character != '\n') {
+            bool starts_physical_line = lexer->at_physical_line_start;
+            lexer->at_physical_line_start = false;
+
+            if (lexer->leading_tab_column != 0) {
+                size_t tab_column = lexer->leading_tab_column;
+                lexer->leading_tab_column = 0;
+
+                if (ERRCODE == 0) {
+                    ERRCODE = LEXER_ERROR;
+                }
+
+                fprintf(stderr,
+                        "Lexical error at %zu:%zu: "
+                        "tab is not allowed in indentation.\n",
+                        out_token->line, tab_column);
+
+                return LEXER_ERROR;
+            }
+
+            if (starts_physical_line && lexer->paren_depth > 0 &&
+                lexer->physical_indent <= lexer->logical_indent) {
+                if (ERRCODE == 0) {
+                    ERRCODE = LEXER_ERROR;
+                }
+
+                fprintf(stderr,
+                        "Lexical error at %zu:%zu: "
+                        "continuation line must be indented more than "
+                        "the first line of the logical line.\n",
+                        out_token->line, out_token->column);
+
+                return LEXER_ERROR;
+            }
+
             break;
         }
 
+        lexer->physical_indent = 0;
+        lexer->at_physical_line_start = true;
+        lexer->leading_tab_column = 0;
         lexer->newline_since_token = true;
 
         if (lexer->paren_depth == 0 && lexer->line_has_token) {
@@ -312,6 +565,14 @@ LexerStatus get_token(Lexer *lexer, Token *out_token) {
         }
 
         if (next_character != character) {
+            if (ERRCODE == 0) {
+                ERRCODE = LEXER_ERROR;
+            }
+
+            fprintf(stderr,
+                    "Lexical error at %zu:%zu: expected '%c' after '%c'.\n",
+                    out_token->line, out_token->column, character, character);
+
             return LEXER_ERROR;
         }
 
@@ -371,12 +632,53 @@ LexerStatus get_token(Lexer *lexer, Token *out_token) {
     }
 
     default:
-        /* TODO: Recognize the remaining tokens. */
+        if ((character >= 'a' && character <= 'z') ||
+            (character >= 'A' && character <= 'Z') || character == '_') {
+            status = lexer_read_identifier(lexer, character,
+                                           &out_token->attribute.text);
+
+            if (status != LEXER_OK) {
+                return status;
+            }
+
+            const char *text = out_token->attribute.text.data;
+            type = lexer_identifier_type(text);
+
+            if (type != TOKEN_IDENTIFIER) {
+                bool boolean_value =
+                    type == TOKEN_BOOL_LITERAL && strcmp(text, "true") == 0;
+
+                free(out_token->attribute.text.data);
+                out_token->attribute = (TokenAttribute){0};
+
+                if (type == TOKEN_BOOL_LITERAL) {
+                    out_token->attribute.bool_value = boolean_value;
+                }
+            }
+
+            break;
+        }
+        /* TODO: Implement recognition of the remaining tokens. */
+        if (ERRCODE == 0) {
+            ERRCODE = LEXER_INTERNAL_ERROR;
+        }
+
+        fprintf(stderr,
+                "Internal lexer error at %zu:%zu: "
+                "token recognition is not implemented for byte 0x%02X.\n",
+                out_token->line, out_token->column, (unsigned int)character);
+
         return LEXER_INTERNAL_ERROR;
     }
 
     out_token->type = type;
     out_token->starts_logical_line = !lexer->line_has_token;
+
+    if (out_token->starts_logical_line) {
+        out_token->indent = lexer->physical_indent;
+        lexer->logical_indent = lexer->physical_indent;
+    }
+
     out_token->newline_before = lexer->newline_since_token;
 
     lexer->line_has_token = true;
