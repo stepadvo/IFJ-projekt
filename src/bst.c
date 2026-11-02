@@ -1,126 +1,112 @@
 /**
- * @file src_example.h
- * @brief example header
- * @author Name Surname, xlogin@stud.fit.vutbr.cz
+ * @file bst.c
+ * @brief implementation for the height balancec binary search tree
+ * @author Štěpán Dvořák, xdvoras00@stud.fit.vutbr.cz
  *
  * detailed description
  */
 
 #include "bst.h"
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define MAX(A, B) A > B ? A : B
 
 /**
- * @brief structure for the tree nodes
+ * @brief a structure for a node of the avl tree
  */
-typedef struct bstNode {
-    char *key; // ptr to the keyArr array
+typedef struct BstNode_s {
+    char *key;
     size_t data;
-    struct bstNode *left;
-    struct bstNode *right;
-    char height;
-} BSTNode;
+    struct BstNode_s *left;
+    struct BstNode_s *right;
+    int height;
+} bstNode_t;
 
-struct BSearchTree {
-    BSTNode *root;
-    char *keyArr; // an array for all the keys to be stored in seperated by null
-                  // characters
-    size_t keyArrSize;     // index of the first unused byte
-    size_t keyArrCapacity; // first index out of bounds
+/**
+ * @brief structure for the avl tree
+ */
+struct Bst_s {
+    bstNode_t *root;
 };
 
-bSearchTree *BVSinit() {
-    bSearchTree *temp = malloc(sizeof(bSearchTree));
+bst_t *BSTInit(void) {
+    bst_t *temp = malloc(sizeof(bst_t));
     if (!temp) {
         // TODO set errcode
         return NULL;
     }
 
-    // init the key array with capacity of 4
-    char *tempKeyArr = malloc(4);
-    if (!tempKeyArr) {
-        // TODO set errcode
-        free(temp);
-        return NULL;
-    }
-    temp->keyArr = tempKeyArr;
-    temp->keyArrSize = 0;
-    temp->keyArrCapacity = 4;
+    temp->root = NULL;
     return temp;
 }
 
 /**
- * @brief destructs the node and all daugter nodes
+ * @brief a recursive deletion of all nodes
  */
-void BSTDestructNode(BSTNode *node) {
-    if (!node) {
+void BSTClear_R(bstNode_t *root) {
+    if (!root) {
         return;
     }
 
-    BSTDestructNode(node->right);
-    BSTDestructNode(node->left);
+    BSTClear_R(root->right);
+    BSTClear_R(root->left);
 
-    free(node);
+    free(root);
 }
 
-void BSTDestruct(bSearchTree *tree) {
-    BSTDestructNode(tree->root);
-
-    // free the key array
-    if (tree->keyArr) {
-        free(tree->keyArr);
+void BSTDestruct(bst_t *tree) {
+    if (tree) {
+        BSTClear_R(tree->root);
+        free(tree);
     }
-
-    free(tree);
 }
 
-/**
- * @brief inserts a key to the key array of the tree
- */
-char *BSTInsertKey(bSearchTree *tree, const char *key) {
-    // repeat until the arr capacity is sufficient
-    while (tree->keyArrSize + strlen(key) < tree->keyArrCapacity) {
-        char *temp = realloc(tree->keyArr, tree->keyArrCapacity * 2);
-        if (!temp) {
-            // TODO set errcode
-            return NULL;
-        }
-
-        tree->keyArr = temp;
-        tree->keyArrCapacity *= 2;
+void BSTClear(bst_t *tree) {
+    if (tree) {
+        BSTClear_R(tree->root);
+        tree->root = NULL;
     }
-
-    // append the key to the end of the array
-    char *ptr = strcpy(tree->keyArr + tree->keyArrSize, key);
-    tree->keyArrSize += strlen(key) + 1;
-    return ptr;
 }
 
 /**
  * @brief constructs a new leaf node on the heap
  * @return ptr to the node or NULL on memory allocation error
  */
-BSTNode *createBSTNode(bSearchTree *tree, const char *key, size_t data) {
-    BSTNode *temp = malloc(sizeof(BSTNode));
+bstNode_t *createNode(const char *key, size_t data, int *err, char **keyPtr) {
+    bstNode_t *temp = malloc(sizeof(bstNode_t));
     if (!temp) {
         // TODO set errcode
+        *err = -1;
         return NULL;
     }
 
+    char *tempKey = malloc(strlen(key) + 1);
+    if (!tempKey) {
+        // TODO set errcode
+        free(temp);
+        *err = -1;
+        return NULL;
+    }
+    // return the pointer to the created id
+    *keyPtr = tempKey;
+
+    temp->key = tempKey;
+    strcpy(temp->key, key);
     temp->data = data;
-    temp->key = BSTInsertKey(tree, key);
     temp->left = temp->right = NULL;
     temp->height = 1;
+    *err = 0;
     return temp;
 }
 
 /**
  * @brief get the height of subtree with node as root
  */
-static inline char getHeight(BSTNode *node) {
+static inline char getHeight(bstNode_t *node) {
     if (!node) {
         return 0;
     }
@@ -130,7 +116,7 @@ static inline char getHeight(BSTNode *node) {
 /**
  * @brief get the balance of the specified node
  */
-static inline char getBalance(BSTNode *node) {
+static inline char getBalance(bstNode_t *node) {
     if (!node) {
         return 0;
     }
@@ -147,9 +133,9 @@ static inline char getBalance(BSTNode *node) {
  * / \        / \
  *T1 T2      T2 T3
  */
-BSTNode *rotateRight(BSTNode *node) {
-    BSTNode *lChild = node->left;
-    BSTNode *lrChild = lChild->right;
+bstNode_t *rotateRight(bstNode_t *node) {
+    bstNode_t *lChild = node->left;
+    bstNode_t *lrChild = lChild->right;
 
     node->left = lrChild;
     lChild->right = node;
@@ -171,9 +157,9 @@ BSTNode *rotateRight(BSTNode *node) {
  *   / \      / \
  *  T2 T3    T1 T2
  */
-BSTNode *rotateLeft(BSTNode *node) {
-    BSTNode *rChild = node->left;
-    BSTNode *rlChild = rChild->right;
+bstNode_t *rotateLeft(bstNode_t *node) {
+    bstNode_t *rChild = node->left;
+    bstNode_t *rlChild = rChild->right;
 
     node->right = rlChild;
     rChild->left = node;
@@ -195,7 +181,7 @@ BSTNode *rotateLeft(BSTNode *node) {
  *
  * works both for balancing after inserting and deleting
  */
-BSTNode *BSTBalanceTree(BSTNode *node) {
+bstNode_t *BSTBalanceTree(bstNode_t *node) {
     char balance = getBalance(node);
 
     if (balance < -1) {
@@ -222,19 +208,24 @@ BSTNode *BSTBalanceTree(BSTNode *node) {
 }
 
 /**
- * @brief a helper function, inserts the node in the subtree rooted with root
- * @return pointer to new root of the subtree
+ * @brief a recursive insertion of a node
+ * @param err a non NULL ptr, is set to values analogous to the retval of @ref
+ * BSTInsert
+ * @return a ptr to the new root
  */
-BSTNode *BSTInsertNode(BSTNode *root, BSTNode *newNode) {
+bstNode_t *BSTInsert_R(bstNode_t *root, const char *key, size_t data, int *err,
+                       char **keyPtr) {
     if (!root) {
-        return newNode;
+        return createNode(key, data, err, keyPtr);
     }
-    if (newNode->key < root->key) {
-        root->left = BSTInsertNode(root->left, newNode);
-    } else if (newNode->key < root->key) {
-        root->right = BSTInsertNode(root->right, newNode);
+    int result = strcmp(key, root->key);
+    if (result < 0) {
+        root->left = BSTInsert_R(root->left, key, data, err, keyPtr);
+    } else if (result > 0) {
+        root->right = BSTInsert_R(root->right, key, data, err, keyPtr);
     } else {
         // duplicite data now allowed
+        *err = -2;
         return root;
     }
 
@@ -245,30 +236,29 @@ BSTNode *BSTInsertNode(BSTNode *root, BSTNode *newNode) {
     return BSTBalanceTree(root);
 }
 
-int BSTInsert(bSearchTree *tree, const char *key, size_t data) {
-    BSTNode *newNode = createBSTNode(tree, key, data);
-    if (!newNode) {
-        return -1;
-    }
-
-    tree->root = BSTInsertNode(tree->root, newNode);
-    return 0;
+int BSTInsert(bst_t *tree, const char *key, size_t data, char **keyPtr) {
+    int errcode;
+    char *discard;
+    if (!keyPtr)
+        keyPtr = &discard;
+    tree->root = BSTInsert_R(tree->root, key, data, &errcode, keyPtr);
+    return errcode;
 }
 
 /**
  * @brief finds the righmost ("highest") key in the subtree rooted with node
  * @return pointer to the found node
  */
-BSTNode *BSTMax(BSTNode *node) {
+bstNode_t *BSTMax(bstNode_t *node) {
     if (!node) {
         return NULL;
     }
 
-    BSTNode *lMax = BSTMax(node->left);
-    BSTNode *rMax = BSTMax(node->right);
+    bstNode_t *lMax = BSTMax(node->left);
+    bstNode_t *rMax = BSTMax(node->right);
     if (lMax && rMax) {
         // return the maximum from both children and node
-        BSTNode *childMax = strcmp(lMax->key, rMax->key) > 0 ? lMax : rMax;
+        bstNode_t *childMax = strcmp(lMax->key, rMax->key) > 0 ? lMax : rMax;
         return strcmp(node->key, childMax->key) > 0 ? node : childMax;
     } else if (lMax) {
         // return maximum from left child and node
@@ -282,48 +272,66 @@ BSTNode *BSTMax(BSTNode *node) {
 }
 
 /**
- * @brief a helper function, removes the node with key in the subtree rooted
- * with root
- * @return pointer to the new root of the subtree
+ * @brief a recursive removal of a node
+ * @param oldData a non NULL ptr, *oldData is set to the data of the removed
+ * node
+ * @param err a non NULL ptr, is set to values analogous to the retval of @ref
+ * BSTRemove
+ * @return a ptr to the new root
  */
-BSTNode *BSTRemoveNode(BSTNode *root, const char *key, size_t *oldData) {
+bstNode_t *BSTRemove_R(bstNode_t *root, const char *key, size_t *oldData,
+                       int *err) {
     if (!root) {
+        // node not found
+        *err = -1;
         return NULL;
     }
 
-    if (key < root->key) {
-        root->left = BSTRemoveNode(root->left, key, oldData);
-    } else if (key > root->key) {
-        root->right = BSTRemoveNode(root->right, key, oldData);
+    int result = strcmp(key, root->key);
+    if (result < 0) {
+        root->left = BSTRemove_R(root->left, key, oldData, err);
+    } else if (result > 0) {
+        root->right = BSTRemove_R(root->right, key, oldData, err);
     }
     // else found the node
     else {
         // both children
         if (root->left && root->right) {
-            // find the maximum in left subtree, replace the root with it and
+            *err = 0;
+            *oldData = root->data;
+            // find the maximum in left subroot, replace the root with it and
             // delete it
-            BSTNode *maxLeft = BSTMax(root->left);
+            bstNode_t *maxLeft = BSTMax(root->left);
             root->key = maxLeft->key;
             root->data = maxLeft->data;
+
             size_t discard;
-            root->left = BSTRemoveNode(root->left, maxLeft->key, &discard);
+            int discardErr;
+            root->left =
+                BSTRemove_R(root->left, maxLeft->key, &discard, &discardErr);
         }
         // only left child
         else if (root->left) {
-            BSTNode *lChild = root->left;
+            bstNode_t *lChild = root->left;
+            *err = 0;
+            *oldData = root->data;
             free(root);
             return lChild;
 
         }
         // only right child
         else if (root->right) {
-            BSTNode *rChild = root->right;
+            bstNode_t *rChild = root->right;
+            *err = 0;
+            *oldData = root->data;
             free(root);
             return rChild;
 
         }
         // no children
         else {
+            *err = 0;
+            *oldData = root->data;
             free(root);
             return NULL;
         }
@@ -336,33 +344,79 @@ BSTNode *BSTRemoveNode(BSTNode *root, const char *key, size_t *oldData) {
     return BSTBalanceTree(root);
 }
 
-size_t BSTRemove(bSearchTree *tree, const char *key) {
-    size_t removedData;
-    BSTRemoveNode(tree->root, key, &removedData);
-    return removedData;
+int BSTRemove(bst_t *tree, const char *key, size_t *oldData) {
+    size_t discard;
+    int errcode;
+    if (!oldData) {
+        oldData = &discard;
+    }
+    BSTRemove_R(tree->root, key, oldData, &errcode);
+    return errcode;
 }
 
-size_t *BSTSearch(bSearchTree *tree, const char *key) {
-    BSTNode *node = tree->root;
+size_t *BSTSearch(bst_t *tree, const char *key) {
+    if (!tree) {
+        return NULL;
+    }
+    bstNode_t *root = tree->root;
     while (true) {
         // check if the node is not NULL
-        if (!node) {
+        if (!root) {
             return NULL;
         }
 
-        int result = strcmp(key, node->key);
+        int result = strcmp(key, root->key);
         if (result == 0) {
-            return &node->data;
+            return &root->data;
         }
         if (result < 0) {
-            node = node->left;
+            root = root->left;
         }
         if (result > 0) {
-            node = node->right;
+            root = root->right;
         }
     }
 }
 
+/**
+ * @brief a recursive finding of the size of the tree
+ */
+size_t BSTSize_R(bstNode_t *root) {
+    if (!root) {
+        return 0;
+    }
+
+    return 1 + BSTSize_R(root->left) + BSTSize_R(root->right);
+}
+
+size_t BSTSize(bst_t *tree) {
+    if (tree) {
+        return BSTSize_R(tree->root);
+    }
+    return 0;
+}
+
+/**
+ * @brief a recursive check for balance
+ * @return check @ref BSTIsBalanced
+ */
+int BSTIsBalanced_R(bstNode_t *root) {
+    if (!root) {
+        return 1;
+    }
+    char balance = getBalance(root);
+    int balanced = balance < 2 && balance > -2;
+    return balanced && BSTIsBalanced_R(root->left) &&
+           BSTIsBalanced_R(root->right);
+}
+
+int BSTIsBalanced(bst_t *tree) {
+    if (tree) {
+        return BSTIsBalanced_R(tree->root);
+    }
+    return 1;
+}
+
 /*
- * end src_example.h
+ * end bst.c
  */
