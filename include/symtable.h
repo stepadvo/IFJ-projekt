@@ -7,15 +7,13 @@
  */
 
 #ifndef SYMTABLE_H
-#define SYMTABLE_H
+    #define SYMTABLE_H
 
-#include <stdbool.h>
-#include <stdlib.h>
+    #include "compiler.h"
+    #include <stdbool.h>
+    #include <stdlib.h>
 
-#define MAX_BLOCKS 128
-
-/** @brief enum of the possible data types in IFJ26 */
-typedef enum { UNIT, INT, DOUBLE, STRING, BOOL, UNKNOWN, NUMERIC, ANY } varType;
+    #define MAX_BLOCKS 128
 
 /** @brief structe containing data about the var symbol (var or val) */
 typedef struct {

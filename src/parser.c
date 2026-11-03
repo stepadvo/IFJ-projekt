@@ -68,8 +68,7 @@ static bool parseProlog(void) {
 }
 
 /** Start parsing and release the lexer after use. */
-astNode *parse(symTable *globalTable) {
-    (void)globalTable; // TODO: Connect the symbol table later.
+astNode *parse(void) {
 
     current_token = (Token){0};
     lexer = lexer_create(stdin);

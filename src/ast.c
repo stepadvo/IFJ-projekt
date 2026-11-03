@@ -6,9 +6,9 @@
  */
 
 #include "ast.h"
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <string.h>
 
 void checkMalloc(void *ptr) {
@@ -65,8 +65,7 @@ int addFunctionToProgram(astNode *programNode, astNode *funcDef) {
     }
 
     // If the array is full/unallocated, we shall expand it
-    if (programNode->data.program.count >=
-        programNode->data.program.capacity) {
+    if (programNode->data.program.count >= programNode->data.program.capacity) {
         // Double the capacity (or set to 4 if it is currently 0)
         size_t new_capacity = (programNode->data.program.capacity == 0)
                                   ? 4
@@ -289,11 +288,10 @@ astNode *createVarDefNode(char *name, bool isConstant, varType explicitType,
 
 /** Create a literal with an independent copy of any token-owned text. */
 astNode *createLiteralNode(Token *token) {
-    if (token == NULL ||
-        (token->type != TOKEN_INT_LITERAL &&
-         token->type != TOKEN_DOUBLE_LITERAL &&
-         token->type != TOKEN_STRING_LITERAL &&
-         token->type != TOKEN_BOOL_LITERAL)) {
+    if (token == NULL || (token->type != TOKEN_INT_LITERAL &&
+                          token->type != TOKEN_DOUBLE_LITERAL &&
+                          token->type != TOKEN_STRING_LITERAL &&
+                          token->type != TOKEN_BOOL_LITERAL)) {
         return NULL;
     }
 

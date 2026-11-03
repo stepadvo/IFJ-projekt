@@ -14,14 +14,13 @@ int main(int argc, char *argv[]) {
     (void)argv;
 
     // 1. Initialize the global symbol table
-    symTable *global_table = initSymTable();
-    if (global_table == NULL) {
+    if (symTableInit() != 0) {
         fprintf(stderr, "Internal error: Failed to init symbol table\n");
         return 99;
     }
 
     // SA
-    astNode *ast_root = parse(global_table);
+    astNode *ast_root = parse();
 
     // TODO: Semantic analysis
     // TODO: Code generator
@@ -30,7 +29,7 @@ int main(int argc, char *argv[]) {
     if (ast_root != NULL) {
         freeAst(ast_root);
     }
-    destructSymTable(global_table);
+    symTableDestruct();
 
     if (ERRCODE != 0) {
         fprintf(stderr, "\

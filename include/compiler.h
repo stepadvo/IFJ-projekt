@@ -8,7 +8,7 @@
     #define COMPILER_H
 
 /** @brief enum of the possible data types in IFJ26 */
-typedef enum { UNIT, INT, DOUBLE, STRING, BOOL, UNKNOWN } varType;
+typedef enum { UNIT, INT, DOUBLE, STRING, BOOL, UNKNOWN, NUMERIC, ANY } varType;
 
 extern int ERRCODE;
 

@@ -45,6 +45,9 @@ typedef enum {
  */
 typedef struct astNode astNode;
 
+/* TODO: Replace legacy symbol pointers with the new symTable API. */
+typedef struct Symbol symbol;
+
 /**
  * @brief structure for holding function parameters in the AST
  */

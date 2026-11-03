@@ -464,13 +464,6 @@ int locTableInsertVar(vSymTable *locTable, varDataPriv data) {
     return firstUnusedIdx;
 }
 
-symTable *initSymTable(void) { return NULL; }
-
-int destructSymTable(symTable *table) {
-    (void)table;
-    return 0;
-}
-
 /*
  * end symtable.c
  */

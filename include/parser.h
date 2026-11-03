@@ -12,13 +12,12 @@
 
 /**
  * @brief Reads source code from stdin and builds an AST.
- * @param globalTable Symbol table (not used by this initial version yet).
  * @return AST root on success, NULL on error.
  *         The caller is responsible for calling freeAst().
  *
  * Currently only the mandatory prolog is parsed. Parsing functions,
  * blocks and expressions will be added in later commits.
  */
-astNode *parse(symTable *globalTable);
+astNode *parse(void);
 
 #endif // PARSER_H
