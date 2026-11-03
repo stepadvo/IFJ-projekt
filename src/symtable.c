@@ -6,6 +6,7 @@
 
 #include "symtable.h"
 #include "bst.h"
+#include "compiler.h"
 #include <stdbool.h>
 
 /**
@@ -136,7 +137,7 @@ int symTableInsertFun(const char *id, varType retType, int paramCount,
 
         if (!newArr) {
             // memory allocation err
-            // TODO set errcode
+            setErrCode(99);
             // remove the function from the tree
             BSTRemove(gFunctionTable.tree, id, NULL);
             return -1;
@@ -359,7 +360,7 @@ int locSymTableInit(vSymTable *table, int paramCount, paramData params[]) {
     // initialize the 0-th block (used for parameters)
     varDataPriv *paramArr = malloc(sizeof(varDataPriv) * paramCount);
     if (!paramArr) {
-        // TODO set errcode
+        setErrCode(99);
         return -1;
     }
 
@@ -425,7 +426,7 @@ int locTableInsertVar(vSymTable *locTable, varDataPriv data) {
                     sizeof(varDataPriv) * locTable->varArrCapacity * 2);
 
         if (!newArr) {
-            // TODO set errcode
+            setErrCode(99);
             return -1;
         }
 
