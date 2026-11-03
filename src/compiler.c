@@ -10,8 +10,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-int ERRCODE;
-
 int main(int argc, char *argv[]) {
     ERRCODE = 0;
 

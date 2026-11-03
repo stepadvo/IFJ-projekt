@@ -9,7 +9,7 @@
 #include <gtest/gtest.h>
 
 extern "C" {
-    #include "header_example.h"
+#include "header_example.h"
 }
 
 // unit tests
