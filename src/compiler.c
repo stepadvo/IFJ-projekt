@@ -7,7 +7,6 @@
  */
 
 #include "compiler.h"
-#include <asm-generic/errno-base.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -16,7 +15,7 @@ int ERRCODE;
 int main(int argc, char *argv[]) {
     ERRCODE = 0;
 
-    //TODO call parser
+    // TODO call parser
 
     if (ERRCODE != EXIT_SUCCESS) {
         fprintf(stderr, "\
