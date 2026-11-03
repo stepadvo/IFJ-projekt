@@ -6,9 +6,7 @@
 
 #include "symtable.h"
 #include "bst.h"
-#include <bits/types/locale_t.h>
 #include <stdbool.h>
-#include <stdlib.h>
 
 /**
  * @brief private variable symbol data structure
@@ -155,10 +153,8 @@ int symTableInsertFun(const char *id, varType retType, int paramCount,
         return -1;
 
     // insert the function data into the array
-    fun->pubData = (funData){.id = funId,
-                             .retType = retType,
-                             .isTypeSet = true,
-                             .paramCount = paramCount};
+    fun->pubData =
+        (funData){.id = funId, .retType = retType, .paramCount = paramCount};
 
     return 0;
 }
@@ -170,7 +166,7 @@ int symTableSetNewRetType(bool active, const char *id, varType newRetType) {
     if (!fun)
         return 1;
 
-    if (fun->pubData.isTypeSet)
+    if (fun->pubData.retType != UNKNOWN)
         return 2; // the return type has been set
 
     fun->pubData.retType = newRetType;
@@ -210,6 +206,9 @@ int symTableInsertVar(const char *id, varType dataType, bool isConst) {
 
     vSymTable *locTable = &gFunctionTable.active->localTable;
 
+    if (locTable->blockNum <= 0)
+        return 4;
+
     size_t *foundVarIdxP = BSTSearch(locTable->tree, id);
 
     // if a variable with the same id is found
@@ -225,7 +224,6 @@ int symTableInsertVar(const char *id, varType dataType, bool isConst) {
             locTable, (varDataPriv){{.id = id,
                                      .dataType = dataType,
                                      .isConst = isConst,
-                                     .isTypeSet = true,
                                      .blockDepth = locTable->blockNum},
                                     *foundVarIdxP});
         if (varIdx < 0)
@@ -237,7 +235,6 @@ int symTableInsertVar(const char *id, varType dataType, bool isConst) {
             locTable, (varDataPriv){{.id = id,
                                      .dataType = dataType,
                                      .isConst = isConst,
-                                     .isTypeSet = true,
                                      .blockDepth = locTable->blockNum},
                                     -1});
         if (varIdx < 0)
@@ -246,54 +243,30 @@ int symTableInsertVar(const char *id, varType dataType, bool isConst) {
     return 0;
 }
 
-int symTableSetNewVarType(const char *id, varType dataType) {
-    if (!gFunctionTable.active)
-        return 1;
-
-    // find the id in the local table
-    size_t *foundVarIdxP =
-        BSTSearch(gFunctionTable.active->localTable.tree, id);
-
-    // check if found
-    if (!foundVarIdxP)
-        return 2;
-
-    varDataPriv *foundVar =
-        &gFunctionTable.active->localTable.varArr[*foundVarIdxP];
-    if (foundVar->pubData.blockDepth <= 0)
-        return 3; // the var is a parameter
-    if (foundVar->pubData.isTypeSet)
-        return 4; // the data type is already set
-
-    foundVar->pubData.dataType = dataType;
-    foundVar->pubData.isTypeSet = true;
-    return 0;
-}
-
 varData symTableFindVar(const char *id) {
     if (!gFunctionTable.active)
-        return (varData){NULL, UNKNOWN, false, false, 0};
+        return (varData){NULL, UNKNOWN, false, 0};
 
     vSymTable *locTable = &gFunctionTable.active->localTable;
     size_t *varIdxP = BSTSearch(locTable->tree, id);
 
     // check if it is found
     if (!varIdxP)
-        return (varData){NULL, UNKNOWN, true, true, 0};
+        return (varData){NULL, UNKNOWN, true, 0};
 
     return locTable->varArr[*varIdxP].pubData;
 }
 
 varData symTableFindVarCurrBlock(const char *id) {
     if (!gFunctionTable.active)
-        return (varData){NULL, UNKNOWN, false, false, 0};
+        return (varData){NULL, UNKNOWN, false, 0};
 
     vSymTable *locTable = &gFunctionTable.active->localTable;
     size_t *varIdxP = BSTSearch(locTable->tree, id);
 
     // check if it is found
     if (!varIdxP)
-        return (varData){NULL, UNKNOWN, true, true, 0};
+        return (varData){NULL, UNKNOWN, true, 0};
 
     varData foundVar = locTable->varArr[*varIdxP].pubData;
     // check if it is in the current block (works for all blocks excepth block
@@ -309,7 +282,7 @@ varData symTableFindVarCurrBlock(const char *id) {
     }
 
     // else foundVar is not in current block
-    return (varData){NULL, UNKNOWN, true, true, 0};
+    return (varData){NULL, UNKNOWN, true, 0};
 }
 
 paramData symTableGetParam(bool active, const char *id, int number) {
@@ -321,7 +294,7 @@ paramData symTableGetParam(bool active, const char *id, int number) {
 
     // check if the parameter exists
     if (number >= fun->pubData.paramCount)
-        return (paramData){NULL, NUMERIC};
+        return (paramData){NULL, ANY};
 
     varData param = fun->localTable.varArr[number].pubData;
     return (paramData){param.id, param.dataType};
@@ -406,7 +379,7 @@ int locSymTableInit(vSymTable *table, int paramCount, paramData params[]) {
             free(paramArr);
             return -1;
         }
-        varDataPriv param = {{key, params[0].dataType, true, true, 0}, -1};
+        varDataPriv param = {{key, params[0].dataType, true, 0}, -1};
         paramArr[i] = param;
     }
 
