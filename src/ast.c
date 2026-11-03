@@ -23,7 +23,7 @@ astNode *createProgramNode(void) {
     checkMalloc(node);
 
     node->type = AST_PROGRAM;
-    node->result_type = UNKNOWN;
+    node->resultType = UNKNOWN;
 
     // Initial prep for functions
     node->data.program.functions = NULL;
@@ -43,17 +43,17 @@ astNode *createFuncDefNode(char *name, bool isMain, astFuncParam *params,
     checkMalloc(node);
 
     node->type = AST_FUNC_DEF;
-    node->result_type = UNKNOWN;
+    node->resultType = UNKNOWN;
 
     // Store all the data passed from the parser
-    node->data.func_def.name = name;
-    node->data.func_def.sym_ptr = NULL;
-    node->data.func_def.is_main = isMain;
-    node->data.func_def.explicit_return_type = UNKNOWN;
-    node->data.func_def.params = params;
-    node->data.func_def.param_count = paramCount;
+    node->data.funcDef.name = name;
+    node->data.funcDef.isMain = isMain;
+    node->data.funcDef.explicitReturnType = UNKNOWN;
+    node->data.funcDef.params = params;
+    node->data.funcDef.paramCount = paramCount;
 
-    node->data.func_def.body = body;
+    node->data.funcDef.body = body;
+    node->data.funcDef.alreadyGenerated = false;
 
     return node;
 }
@@ -67,17 +67,17 @@ int addFunctionToProgram(astNode *programNode, astNode *funcDef) {
     // If the array is full/unallocated, we shall expand it
     if (programNode->data.program.count >= programNode->data.program.capacity) {
         // Double the capacity (or set to 4 if it is currently 0)
-        size_t new_capacity = (programNode->data.program.capacity == 0)
-                                  ? 4
-                                  : programNode->data.program.capacity * 2;
+        size_t newCapacity = (programNode->data.program.capacity == 0)
+                                 ? 4
+                                 : programNode->data.program.capacity * 2;
 
         // Resize the array of pointers
-        astNode **new_array = realloc(programNode->data.program.functions,
-                                      new_capacity * sizeof(astNode *));
-        checkMalloc(new_array);
+        astNode **newArray = realloc(programNode->data.program.functions,
+                                     newCapacity * sizeof(astNode *));
+        checkMalloc(newArray);
 
-        programNode->data.program.functions = new_array;
-        programNode->data.program.capacity = new_capacity;
+        programNode->data.program.functions = newArray;
+        programNode->data.program.capacity = newCapacity;
     }
 
     // Add the new function to the end of the array
@@ -99,17 +99,16 @@ astNode *createForNode(char *iteratorName, astNode *start, astNode *end,
     astNode *node = malloc(sizeof(*node));
     checkMalloc(node);
     node->type = AST_FOR;
-    node->result_type = UNKNOWN;
-    node->data.for_stmt.iterator_name = iteratorName;
-    node->data.for_stmt.sym_ptr = NULL;
-    node->data.for_stmt.start = start;
-    node->data.for_stmt.end = end;
-    node->data.for_stmt.end_inclusive = endInclusive;
-    node->data.for_stmt.step = step;
-    node->data.for_stmt.guards = NULL;
-    node->data.for_stmt.guard_count = 0;
-    node->data.for_stmt.guard_capacity = 0;
-    node->data.for_stmt.body = body;
+    node->resultType = UNKNOWN;
+    node->data.forStmt.iteratorName = iteratorName;
+    node->data.forStmt.start = start;
+    node->data.forStmt.end = end;
+    node->data.forStmt.endInclusive = endInclusive;
+    node->data.forStmt.step = step;
+    node->data.forStmt.guards = NULL;
+    node->data.forStmt.guardCount = 0;
+    node->data.forStmt.guardCapacity = 0;
+    node->data.forStmt.body = body;
     return node;
 }
 
@@ -118,25 +117,24 @@ int addGuardToFor(astNode *forNode, astNode *guard) {
         return -1;
     }
 
-    if (forNode->data.for_stmt.guard_count ==
-        forNode->data.for_stmt.guard_capacity) {
-        size_t new_capacity = forNode->data.for_stmt.guard_capacity == 0
-                                  ? 4
-                                  : forNode->data.for_stmt.guard_capacity * 2;
-        astNode **new_guards = realloc(forNode->data.for_stmt.guards,
-                                       new_capacity * sizeof(*new_guards));
-        checkMalloc(new_guards);
-        forNode->data.for_stmt.guards = new_guards;
-        forNode->data.for_stmt.guard_capacity = new_capacity;
+    if (forNode->data.forStmt.guardCount ==
+        forNode->data.forStmt.guardCapacity) {
+        size_t newCapacity = forNode->data.forStmt.guardCapacity == 0
+                                 ? 4
+                                 : forNode->data.forStmt.guardCapacity * 2;
+        astNode **newGuards = realloc(forNode->data.forStmt.guards,
+                                      newCapacity * sizeof(*newGuards));
+        checkMalloc(newGuards);
+        forNode->data.forStmt.guards = newGuards;
+        forNode->data.forStmt.guardCapacity = newCapacity;
     }
 
-    forNode->data.for_stmt.guards[forNode->data.for_stmt.guard_count++] = guard;
+    forNode->data.forStmt.guards[forNode->data.forStmt.guardCount++] = guard;
     return 0;
 }
 
 /**
  * Free an AST and everything owned by its nodes.
- * Symbol table entries (sym_ptr) are only borrowed, never freed here.
  */
 void freeAst(astNode *root) {
     if (root == NULL) {
@@ -152,17 +150,17 @@ void freeAst(astNode *root) {
         break;
 
     case AST_FUNC_DEF:
-        free(root->data.func_def.name);
-        for (size_t i = 0; i < root->data.func_def.param_count; i++) {
-            free(root->data.func_def.params[i].name);
+        free(root->data.funcDef.name);
+        for (size_t i = 0; i < root->data.funcDef.paramCount; i++) {
+            free(root->data.funcDef.params[i].name);
         }
-        free(root->data.func_def.params);
-        freeAst(root->data.func_def.body);
+        free(root->data.funcDef.params);
+        freeAst(root->data.funcDef.body);
         break;
 
     case AST_VAR_DEF:
-        free(root->data.var_def.name);
-        freeAst(root->data.var_def.initializer);
+        free(root->data.varDef.name);
+        freeAst(root->data.varDef.initializer);
         break;
 
     case AST_ASSIGN:
@@ -171,38 +169,38 @@ void freeAst(astNode *root) {
         break;
 
     case AST_IF:
-        freeAst(root->data.if_stmt.condition);
-        freeAst(root->data.if_stmt.then_block);
-        freeAst(root->data.if_stmt.else_block);
+        freeAst(root->data.ifStmt.condition);
+        freeAst(root->data.ifStmt.thenBlock);
+        freeAst(root->data.ifStmt.elseBlock);
         break;
 
     case AST_WHILE:
-        freeAst(root->data.while_stmt.condition);
-        freeAst(root->data.while_stmt.body_block);
+        freeAst(root->data.whileStmt.condition);
+        freeAst(root->data.whileStmt.bodyBlock);
         break;
 
     case AST_FOR:
-        free(root->data.for_stmt.iterator_name);
-        freeAst(root->data.for_stmt.start);
-        freeAst(root->data.for_stmt.end);
-        freeAst(root->data.for_stmt.step);
-        for (size_t i = 0; i < root->data.for_stmt.guard_count; i++) {
-            freeAst(root->data.for_stmt.guards[i]);
+        free(root->data.forStmt.iteratorName);
+        freeAst(root->data.forStmt.start);
+        freeAst(root->data.forStmt.end);
+        freeAst(root->data.forStmt.step);
+        for (size_t i = 0; i < root->data.forStmt.guardCount; i++) {
+            freeAst(root->data.forStmt.guards[i]);
         }
-        free(root->data.for_stmt.guards);
-        freeAst(root->data.for_stmt.body);
+        free(root->data.forStmt.guards);
+        freeAst(root->data.forStmt.body);
         break;
 
     case AST_FUNC_CALL:
-        free(root->data.func_call.func_name);
-        for (size_t i = 0; i < root->data.func_call.arg_count; i++) {
-            freeAst(root->data.func_call.arguments[i]);
+        free(root->data.funcCall.funcName);
+        for (size_t i = 0; i < root->data.funcCall.argCount; i++) {
+            freeAst(root->data.funcCall.arguments[i]);
         }
-        free(root->data.func_call.arguments);
+        free(root->data.funcCall.arguments);
         break;
 
     case AST_RETURN:
-        freeAst(root->data.return_stmt.value);
+        freeAst(root->data.returnStmt.value);
         break;
 
     case AST_BINOP:
@@ -215,7 +213,7 @@ void freeAst(astNode *root) {
         break;
 
     case AST_LITERAL:
-        if (root->data.literal.lit_type == TOKEN_STRING_LITERAL) {
+        if (root->data.literal.litType == TOKEN_STRING_LITERAL) {
             free(root->data.literal.attribute.text.data);
         }
         break;
@@ -241,7 +239,8 @@ astNode *createBlockNode(void) {
     checkMalloc(node);
 
     node->type = AST_BLOCK;
-    node->result_type = UNKNOWN;
+    node->resultType = UNKNOWN;
+    node->data.block.bufferNum = -1;
     return node;
 }
 
@@ -253,15 +252,14 @@ int addStatementToBlock(astNode *blockNode, astNode *statement) {
     }
 
     if (blockNode->data.block.count == blockNode->data.block.capacity) {
-        size_t new_capacity = blockNode->data.block.capacity == 0
-                                  ? 4
-                                  : blockNode->data.block.capacity * 2;
-        astNode **new_statements =
-            realloc(blockNode->data.block.statements,
-                    new_capacity * sizeof(*new_statements));
-        checkMalloc(new_statements);
-        blockNode->data.block.statements = new_statements;
-        blockNode->data.block.capacity = new_capacity;
+        size_t newCapacity = blockNode->data.block.capacity == 0
+                                 ? 4
+                                 : blockNode->data.block.capacity * 2;
+        astNode **newStatements = realloc(blockNode->data.block.statements,
+                                          newCapacity * sizeof(*newStatements));
+        checkMalloc(newStatements);
+        blockNode->data.block.statements = newStatements;
+        blockNode->data.block.capacity = newCapacity;
     }
 
     blockNode->data.block.statements[blockNode->data.block.count++] = statement;
@@ -278,11 +276,11 @@ astNode *createVarDefNode(char *name, bool isConstant, varType explicitType,
     astNode *node = calloc(1, sizeof(*node));
     checkMalloc(node);
     node->type = AST_VAR_DEF;
-    node->result_type = UNKNOWN;
-    node->data.var_def.name = name;
-    node->data.var_def.is_constant = isConstant;
-    node->data.var_def.explicit_type = explicitType;
-    node->data.var_def.initializer = initializer;
+    node->resultType = UNKNOWN;
+    node->data.varDef.name = name;
+    node->data.varDef.isConstant = isConstant;
+    node->data.varDef.explicitType = explicitType;
+    node->data.varDef.initializer = initializer;
     return node;
 }
 
@@ -298,8 +296,8 @@ astNode *createLiteralNode(Token *token) {
     astNode *node = calloc(1, sizeof(*node));
     checkMalloc(node);
     node->type = AST_LITERAL;
-    node->result_type = UNKNOWN;
-    node->data.literal.lit_type = token->type;
+    node->resultType = UNKNOWN;
+    node->data.literal.litType = token->type;
 
     if (token->type == TOKEN_STRING_LITERAL) {
         // The lexer will free token->attribute.text.data when advancing.
@@ -330,10 +328,10 @@ astNode *createIfNode(astNode *condition, astNode *thenBlock,
     astNode *node = calloc(1, sizeof(*node));
     checkMalloc(node);
     node->type = AST_IF;
-    node->result_type = UNKNOWN;
-    node->data.if_stmt.condition = condition;
-    node->data.if_stmt.then_block = thenBlock;
-    node->data.if_stmt.else_block = elseBlock;
+    node->resultType = UNKNOWN;
+    node->data.ifStmt.condition = condition;
+    node->data.ifStmt.thenBlock = thenBlock;
+    node->data.ifStmt.elseBlock = elseBlock;
     return node;
 }
 
@@ -345,9 +343,9 @@ astNode *createWhileNode(astNode *condition, astNode *bodyBlock) {
     astNode *node = calloc(1, sizeof(*node));
     checkMalloc(node);
     node->type = AST_WHILE;
-    node->result_type = UNKNOWN;
-    node->data.while_stmt.condition = condition;
-    node->data.while_stmt.body_block = bodyBlock;
+    node->resultType = UNKNOWN;
+    node->data.whileStmt.condition = condition;
+    node->data.whileStmt.bodyBlock = bodyBlock;
     return node;
 }
 
@@ -359,9 +357,8 @@ astNode *createAssignNode(char *name, astNode *value) {
     astNode *node = calloc(1, sizeof(*node));
     checkMalloc(node);
     node->type = AST_ASSIGN;
-    node->result_type = UNKNOWN;
+    node->resultType = UNKNOWN;
     node->data.assign.name = name;
-    node->data.assign.sym_ptr = NULL;
     node->data.assign.value = value;
     return node;
 }
@@ -371,8 +368,8 @@ astNode *createReturnNode(astNode *value) {
     astNode *node = calloc(1, sizeof(*node));
     checkMalloc(node);
     node->type = AST_RETURN;
-    node->result_type = UNKNOWN;
-    node->data.return_stmt.value = value;
+    node->resultType = UNKNOWN;
+    node->data.returnStmt.value = value;
     return node;
 }
 

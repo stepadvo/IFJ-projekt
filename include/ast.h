@@ -1,307 +1,310 @@
 /**
  * @file ast.h
- * @brief interface declaration for the Abstract Syntax Tree (AST)
+ * @brief AST structures and functions used by the IFJ26 parser.
  * @author Jiří Dohnal, xdohnaj00@stud.fit.vutbr.cz
  *
- * Declarations of the structures and functions working with the AST.
+ * The AST keeps the structure of a parsed program: functions, blocks,
+ * statements and expressions. Every child node has one owner and is freed
+ * together with its parent by freeAst(). Names stored in the AST are owned
+ * by the AST as well. The symbol table is handled separately.
  */
 
 #ifndef AST_H
 #define AST_H
 
-#include "symtable.h"
+#include "compiler.h"
 #include "token.h"
 #include <stdbool.h>
 #include <stddef.h>
 
-/**
- * @brief enum of all possible node types in the AST
- */
+/** Types of nodes stored in the AST. */
 typedef enum {
-    AST_PROGRAM,    /**< Root node of the entire IFJ26 program */
-    AST_FUNC_DEF,   /**< Function definition (def) */
-    AST_VAR_DEF,    /**< Variable definition (val / var) */
-    AST_ASSIGN,     /**< Assignment to a variable (=) */
-    AST_IF,         /**< Conditional statement (if-then-else) */
-    AST_WHILE,      /**< Loop statement (while) */
-    AST_FOR,        /**< Range-based for loop (CONTROL extension) */
-    AST_FUNC_CALL,  /**< Function call */
-    AST_RETURN,     /**< Return statement inside a function */
-    AST_BINOP,      /**< Binary operations (+, -, *, /, <, ==, etc.) */
-    AST_UNOP,       /**< Unary operations (-, !) */
-    AST_LITERAL,    /**< Constant literals (42, "text", 3.14) */
-    AST_IDENTIFIER, /**< Variable or function names */
-    AST_BLOCK /**< Block of statements (body of functions, loops, conditions) */
+    AST_PROGRAM,    /**< Program root (all function definitions). */
+    AST_FUNC_DEF,   /**< Function definition (def add(...) = ...). */
+    AST_VAR_DEF,    /**< New variable (val x = 5, var y = 0). */
+    AST_ASSIGN,     /**< Assignment to an existing variable (x = 5). */
+    AST_IF,         /**< If statement or expression. */
+    AST_WHILE,      /**< While loop. */
+    AST_FOR,        /**< Range-based for loop (CONTROL). */
+    AST_FUNC_CALL,  /**< Function call (add(2, 3)). */
+    AST_RETURN,     /**< Return statement (return x). */
+    AST_BINOP,      /**< Binary expression (a + b, x < 5). */
+    AST_UNOP,       /**< Unary expression (-x, !flag). */
+    AST_LITERAL,    /**< Literal (42, "hello", true). */
+    AST_IDENTIFIER, /**< Use of a variable or parameter (x). */
+    AST_BLOCK       /**< Statements in a block. */
 } astNodeType;
 
-/**
- * @brief the abstract syntax tree node structure
- *
- * Nodes own their child nodes, copied strings, and parameter/child arrays.
- * Each child must have one owner. All symbol pointers (sym_ptr) are borrowed
- * from the symbol table and are never freed by the AST.
- *
- * result_type is set to UNKNOWN until the resulting type is determined.
- */
 typedef struct astNode astNode;
 
-/* TODO: Replace legacy symbol pointers with the new symTable API. */
-typedef struct Symbol symbol;
-
-/**
- * @brief structure for holding function parameters in the AST
- */
+/** One parameter in a function definition (e.g. x: Int). */
 typedef struct {
-    char *name;
-    varType type;
+    char *name;   /**< Parameter name; owned by the AST. */
+    varType type; /**< Declared parameter type. */
 } astFuncParam;
 
+/**
+ * @brief A node in the syntax tree.
+ *
+ * Only the data member matching type is valid. resultType is initially
+ * UNKNOWN and can be filled in during semantic analysis.
+ */
 struct astNode {
-    astNodeType type;
-    varType result_type;
+    astNodeType type;   /**< Node kind, e.g. AST_IF or AST_BINOP. */
+    varType resultType; /**< Result type after semantic analysis. */
 
     union {
-        // if the node type is AST_PROGRAM
+        /**
+         * @brief Root of the file.
+         * For two definitions, functions[0] and functions[1] point to
+         * two AST_FUNC_DEF nodes.
+         */
         struct {
-            astNode **functions;
-            size_t count;
-            size_t capacity;
+            astNode **functions; /**< AST_FUNC_DEF nodes, in source order. */
+            size_t count;        /**< Number of functions. */
+            size_t capacity;     /**< Allocated slots in functions. */
         } program;
 
-        // if the node type is AST_BINOP
+        /**
+         * @brief Binary operation (e.g. 2 + 3 * 4).
+         * The AST stores precedence through its shape: + is the parent
+         * and * is its right child in this example.
+         */
         struct {
-            TokenType op;
-            astNode *left;
-            astNode *right;
+            TokenType op;   /**< Operator (+, *, ==, ...). */
+            astNode *left;  /**< Left-hand expression. */
+            astNode *right; /**< Right-hand expression. */
         } binop;
 
-        // if the node type is AST_UNOP
+        /**
+         * @brief Unary operation (e.g. -x or !ready).
+         * Unlike a binary operation, this has only one operand.
+         */
         struct {
-            TokenType op;
-            astNode *operand;
+            TokenType op;     /**< Unary operator (-, +, !). */
+            astNode *operand; /**< Expression to which it applies. */
         } unop;
 
-        // if the node type is AST_LITERAL
+        /**
+         * @brief Literal from a token (e.g. 42, true, "hello").
+         * litType tells us which value in attribute is valid.
+         * String data is copied from the lexer token.
+         */
         struct {
-            TokenType lit_type;
-            TokenAttribute attribute;
+            TokenType litType; /**< Literal token type. */
+            TokenAttribute
+                attribute; /**< Literal value; string data is copied. */
         } literal;
 
-        // if the node type is AST_IDENTIFIER
+        /**
+         * @brief Use of a named value (e.g. x in return x).
+         * This is a reference to an existing variable or parameter,
+         * not a new declaration. The name is enough for symbol lookup.
+         */
         struct {
-            char *name;
-            symbol *sym_ptr;
+            char *name; /**< Variable or parameter name. */
         } identifier;
 
-        // if the node type is AST_IF (statement or expression under CONTROL)
+        /**
+         * @brief If statement or expression (CONTROL / BOOLTHEN).
+         * An if expression has a value, so it needs an else branch.
+         * A plain if statement may omit else.
+         */
         struct {
-            astNode *condition;
-            astNode *then_block;
-            astNode *else_block;
-        } if_stmt;
+            astNode *condition; /**< Boolean expression after if. */
+            astNode
+                *thenBlock; /**< True branch: expression, statement or block. */
+            astNode *elseBlock; /**< False branch; NULL if omitted. */
+        } ifStmt;
 
-        // if the node type is AST_FOR (CONTROL extension)
+        /**
+         * @brief Range-based loop (e.g. for i <- 1 until 10 by 2 do ...).
+         * Each guard is another Boolean condition (if ...). If a guard
+         * is false, that iteration is skipped; the loop continues.
+         */
         struct {
-            char *iterator_name; // Name of the new immutable loop variable
-            symbol *sym_ptr;     // Borrowed pointer; owned by symbol table
-            astNode *start;      // Inclusive starting bound expression
-            astNode *end;        // Ending bound expression
-            bool end_inclusive;  // true = "to", false = "until"
-            astNode *step;       // Optional "by" expression; NULL means +1
-            astNode **guards;    // Optional "if" conditions, in source order
-            size_t guard_count;
-            size_t guard_capacity;
-            astNode *body; // AST_BLOCK or a single statement/expression
-        } for_stmt;
+            char *iteratorName;   /**< Loop variable (i). */
+            astNode *start;       /**< Starting bound expression. */
+            astNode *end;         /**< Ending bound expression. */
+            bool endInclusive;    /**< true for to, false for until. */
+            astNode *step;        /**< Optional by expression; NULL means +1. */
+            astNode **guards;     /**< Conditions after if; all must hold. */
+            size_t guardCount;    /**< Number of guards. */
+            size_t guardCapacity; /**< Allocated slots in guards. */
+            astNode *body; /**< Loop body (statement, expression or block). */
+        } forStmt;
 
-        // if the node type is AST_WHILE
+        /**
+         * @brief While loop (e.g. while x < 10 do ...).
+         * The body runs while the condition evaluates to true.
+         */
         struct {
-            astNode *condition;
-            astNode *body_block;
-        } while_stmt;
+            astNode *condition; /**< Loop condition. */
+            astNode *bodyBlock; /**< Loop body, stored as AST_BLOCK. */
+        } whileStmt;
 
-        // if the node type is AST_BLOCK
+        /**
+         * @brief Statements belonging to one block.
+         * Example: val x = 5, then return x. The nodes are kept
+         * in source order. bufferNum is reserved for the generator.
+         */
         struct {
-            astNode **statements;
-            size_t count;
-            size_t capacity;
+            astNode **statements; /**< Statements in their original order. */
+            size_t count;         /**< Number of statements. */
+            size_t capacity;      /**< Allocated slots in statements. */
+            int bufferNum;        /**< Buffer ID used by code generation. */
         } block;
 
-        // if the node type is AST_FUNC_CALL
+        /**
+         * @brief Function call (e.g. add(2, x + 1)).
+         * Each argument is an expression; arguments[1] would be the
+         * AST_BINOP for x + 1. No arguments means argCount == 0.
+         */
         struct {
-            char *func_name;
-            symbol *sym_ptr;
-            astNode **arguments;
-            size_t arg_count;
-            size_t arg_capacity;
-        } func_call;
+            char *funcName;      /**< Name of the called function. */
+            astNode **arguments; /**< Argument expressions in call order. */
+            size_t argCount;     /**< Number of arguments. */
+            size_t argCapacity;  /**< Allocated slots in arguments. */
+        } funcCall;
 
-        // if the node type is AST_VAR_DEF
+        /**
+         * @brief New variable (e.g. val x: Int = 5).
+         * Unlike AST_ASSIGN, this introduces the variable. If there
+         * is no written type, the semantic pass infers it.
+         */
         struct {
-            char *name;
-            bool is_constant;
-            varType explicit_type;
-            astNode *initializer;
-        } var_def;
+            char *name;           /**< Variable name. */
+            bool isConstant;      /**< true for val, false for var. */
+            varType explicitType; /**< Written type; UNKNOWN if omitted. */
+            astNode *initializer; /**< Expression used to initialize it. */
+        } varDef;
 
-        // if the node type is AST_ASSIGN
+        /**
+         * @brief Assignment to an existing variable (e.g. x = x + 1).
+         * The target is stored by name; value is the expression to assign.
+         */
         struct {
-            char *name;
-            symbol *sym_ptr;
-            astNode *value;
+            char *name;     /**< Variable being assigned to. */
+            astNode *value; /**< New value as an expression. */
         } assign;
 
-        // if the node type is AST_FUNC_DEF
+        /**
+         * @brief Function definition (e.g. def add(a: Int) = a + 1).
+         * A single-expression function points straight to the expression.
+         * A multiline function points to AST_BLOCK instead.
+         * alreadyGenerated is used to avoid generating a function twice.
+         */
         struct {
-            char *name;
-            symbol *sym_ptr;
-            bool is_main;
-            varType explicit_return_type; // UNKNOWN if omitted in the source
-            astFuncParam *params;
-            size_t param_count;
-            astNode *body;
-        } func_def;
+            char *name;                 /**< Function name. */
+            bool isMain;                /**< true if marked with @main. */
+            varType explicitReturnType; /**< Written return type; UNKNOWN if
+                                           omitted. */
+            astFuncParam *params;       /**< Parameters in declaration order. */
+            size_t paramCount;          /**< Number of parameters. */
+            astNode *body;         /**< AST_BLOCK or a single expression. */
+            bool alreadyGenerated; /**< Set once this function has been
+                                      generated. */
+        } funcDef;
 
-        // if the node type is AST_RETURN
+        /**
+         * @brief Return from a function (e.g. return x + 1).
+         * A return without a value has value == NULL.
+         */
         struct {
-            astNode *value;
-        } return_stmt;
+            astNode *value; /**< Returned expression; NULL for bare return. */
+        } returnStmt;
 
     } data;
 };
 
 /**
- * @brief checks if dynamic allocation succeded
- * @param ptr Pointer to the allocated memory to check
+ * @brief Checks an allocation and exits with code 99 if it failed.
+ * @param ptr Pointer returned by an allocation function.
  */
 void checkMalloc(void *ptr);
 
-/**
- * @brief creates a program root node
- * @return Pointer to the newly allocated program node
- */
-astNode *createProgramNode();
+/** Creates an empty AST_PROGRAM node. */
+astNode *createProgramNode(void);
+
+/** Creates an empty AST_BLOCK node (bufferNum starts at -1). */
+astNode *createBlockNode(void);
 
 /**
- * @brief creates an empty block node
- * @return Pointer to the newly allocated block node
- */
-astNode *createBlockNode();
-
-/**
- * @brief appends a statement to the block node
- * @param blockNode The block node to append to
- * @param statement The statement node to append
- * @return 0 on success, non-zero on failure
+ * @brief Adds a statement to a block.
+ * @return 0 on success, -1 for invalid arguments.
+ * The block takes ownership of the statement on success.
  */
 int addStatementToBlock(astNode *blockNode, astNode *statement);
 
 /**
- * @brief creates a function definition node
- * @param name Name of the function
- * @param isMain True if the function is @main
- * @param params Array of function parameters
- * @param paramCount Number of parameters
- * @param body Block node or single-expression function body
- * @details On success, the AST owns name, params (including parameter names),
- *          and body. The declared return type can be set in
- *          data.func_def.explicit_return_type after parsing the header.
- * @return Pointer to the newly allocated function node
+ * @brief Creates a function definition.
+ * @param name Allocated function name.
+ * @param isMain Whether the function has @main.
+ * @param params Array of parameters, including their allocated names.
+ * @param paramCount Number of entries in params.
+ * @param body Function body (AST_BLOCK or a single expression).
+ *
+ * The new node owns name, params and body. Its explicitReturnType starts
+ * as UNKNOWN and alreadyGenerated starts as false.
  */
 astNode *createFuncDefNode(char *name, bool isMain, astFuncParam *params,
                            size_t paramCount, astNode *body);
 
 /**
- * @brief creates a variable definition node (val/var)
- * @param name Name of the variable
- * @param isConstant True if defined with 'val', false for 'var'
- * @param explicitType The explicitly stated type (or UNKNOWN if inferred)
- * @param initializer The expression node assigned to the variable
- * @return Pointer to the newly allocated variable definition node
+ * @brief Creates a val/var declaration.
+ * @param explicitType Declared type, or UNKNOWN if omitted.
+ * The node takes ownership of name and initializer.
  */
 astNode *createVarDefNode(char *name, bool isConstant, varType explicitType,
                           astNode *initializer);
 
 /**
- * @brief creates a literal node
- * @param token The token containing an Int, Double, String, or Boolean literal
- * @details String contents are copied; the lexer still owns the source token.
- *          Identifier tokens are not literals and return NULL.
- * @return Pointer to the newly allocated literal node
+ * @brief Creates a literal from a lexer token.
+ * Copies string contents so the token can be freed independently.
+ * Returns NULL for unsupported token types.
  */
 astNode *createLiteralNode(Token *token);
 
 /**
- * @brief creates a conditional if-then-else node
- * @param condition The expression node representing the if condition
- * @param thenBlock A block or single expression/statement for the true branch
- * @param elseBlock A block or single expression/statement for the false branch
- *                  (can be NULL for an if statement; required for an if
- * expression)
- * @return Pointer to the newly allocated if node
+ * @brief Creates an if node.
+ * elseBlock may be NULL for an if statement without else. An if expression
+ * needs both branches.
  */
 astNode *createIfNode(astNode *condition, astNode *thenBlock,
                       astNode *elseBlock);
 
-/**
- * @brief creates a while loop node
- * @param condition The expression node representing the loop condition
- * @param bodyBlock The block node containing the loop body
- * @return Pointer to the newly allocated while node
- */
+/** Creates a while loop with a condition and body block. */
 astNode *createWhileNode(astNode *condition, astNode *bodyBlock);
 
 /**
- * @brief creates a range-based for loop (CONTROL extension)
- * @param iteratorName Heap-allocated name of the immutable loop variable
- * @param start Inclusive starting bound expression
- * @param end Ending bound expression
- * @param endInclusive True for "to", false for "until"
- * @param step Optional "by" expression; NULL means the default step of +1
- * @param body Block node or a single statement/expression
- * @return Pointer to the newly allocated for node
- *
- * On success, the new node owns iteratorName, start, end, step and body.
+ * @brief Creates a range-based for loop.
+ * @param endInclusive true for to, false for until.
+ * @param step Optional by expression; NULL uses the default step.
+ * Takes ownership of iteratorName and all child nodes passed to it.
  */
 astNode *createForNode(char *iteratorName, astNode *start, astNode *end,
                        bool endInclusive, astNode *step, astNode *body);
 
 /**
- * @brief appends a Boolean guard to a for loop, in source order
- * @param forNode The AST_FOR node
- * @param guard Condition expression to append
- * @return 0 on success, -1 for invalid arguments
- *
- * On success, forNode owns the guard node.
+ * @brief Appends one guard condition to a for loop.
+ * @return 0 on success, -1 for invalid arguments.
+ * On success the for node owns guard.
  */
 int addGuardToFor(astNode *forNode, astNode *guard);
 
-/**
- * @brief creates an assignment node
- * @param name The name of the target variable being assigned to
- * @param value The expression node representing the new value
- * @return Pointer to the newly allocated assignment node
- */
+/** Creates an assignment; the node owns name and value. */
 astNode *createAssignNode(char *name, astNode *value);
 
-/**
- * @brief creates a return statement node
- * @param value The expression node to return (can be NULL)
- * @return Pointer to the newly allocated return node
- */
+/** Creates a return node (value may be NULL). */
 astNode *createReturnNode(astNode *value);
 
-/**
- * @brief recursively frees the tree and all data it owns (not symbols)
- * @param root Pointer to the root node of the AST to free
- */
+/** Recursively frees the AST, including names and child arrays. */
 void freeAst(astNode *root);
 
 /**
- * @brief appends a function definition to the program root node
- * @param programNode The root program node
- * @param funcDef The function definition node to append
- * @return 0 on success, non-zero on failure
+ * @brief Appends a function to an AST_PROGRAM node.
+ * @return 0 on success, -1 for invalid arguments.
+ * The program takes ownership of funcDef on success.
  */
 int addFunctionToProgram(astNode *programNode, astNode *funcDef);
 
