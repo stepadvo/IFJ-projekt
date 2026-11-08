@@ -104,10 +104,10 @@ typedef struct {
  * Tokens without a value attribute do not use any member of this union.
  */
 typedef union {
-    int64_t int_value;   /**< TOKEN_INT_LITERAL value; the minus sign is a
+    int64_t intValue;   /**< TOKEN_INT_LITERAL value; the minus sign is a
                             separate token. */
-    double double_value; /**< TOKEN_DOUBLE_LITERAL value. */
-    bool bool_value;     /**< TOKEN_BOOL_LITERAL value. */
+    double doubleValue; /**< TOKEN_DOUBLE_LITERAL value. */
+    bool boolValue;     /**< TOKEN_BOOL_LITERAL value. */
     TokenText text; /**< Text for TOKEN_IDENTIFIER or TOKEN_STRING_LITERAL. */
 } TokenAttribute;
 
@@ -125,8 +125,8 @@ typedef struct {
     size_t line; /**< Physical line where the token starts, numbered from 1. */
     size_t column; /**< Column where the token starts, numbered from 1. */
 
-    bool starts_logical_line; /**< True if the token starts a new logical line.
-                               */
+    bool startsLogicalLine; /**< True if the token starts a new logical line.
+                             */
     size_t indent; /**< Number of leading spaces on the logical line; otherwise
                       0. */
 
@@ -138,7 +138,7 @@ typedef struct {
      * For the first actual token, counts from the beginning of input.
      * Always false for TOKEN_NEWLINE, TOKEN_EOF, and TOKEN_INVALID.
      */
-    bool newline_before;
+    bool newlineBefore;
 } Token;
 
 /**
@@ -151,6 +151,6 @@ typedef struct {
  *
  * @param token Pointer to an initialized token; NULL is allowed.
  */
-void token_free(Token *token);
+void tokenFree(Token *token);
 
 #endif
