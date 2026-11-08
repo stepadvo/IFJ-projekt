@@ -48,9 +48,7 @@ static LexerStatus lexer_read_char(Lexer *lexer, int *out_char) {
     if (character == EOF) {
         /* Distinguish a read error from normal EOF. */
         if (ferror(lexer->input)) {
-            if (ERRCODE == 0) {
-                ERRCODE = LEXER_INTERNAL_ERROR;
-            }
+            setErrCode(LEXER_INTERNAL_ERROR);
 
             fprintf(stderr,
                     "Internal lexer error at %zu:%zu: input read failed.\n",
@@ -89,9 +87,7 @@ static LexerStatus lexer_peek_char(Lexer *lexer, int *out_char) {
     if (character == EOF) {
         /* Distinguish a read error from normal EOF. */
         if (ferror(lexer->input)) {
-            if (ERRCODE == 0) {
-                ERRCODE = LEXER_INTERNAL_ERROR;
-            }
+            setErrCode(LEXER_INTERNAL_ERROR);
 
             fprintf(stderr,
                     "Internal lexer error at %zu:%zu: input read failed.\n",
@@ -104,9 +100,7 @@ static LexerStatus lexer_peek_char(Lexer *lexer, int *out_char) {
     }
 
     if (ungetc(character, lexer->input) == EOF) {
-        if (ERRCODE == 0) {
-            ERRCODE = LEXER_INTERNAL_ERROR;
-        }
+        setErrCode(LEXER_INTERNAL_ERROR);
 
         fprintf(stderr,
                 "Internal lexer error at %zu:%zu: character pushback failed.\n",
@@ -235,9 +229,7 @@ static LexerStatus lexer_read_identifier(Lexer *lexer, int first_character,
     if (length == 1 && buffer[0] == '_') {
         free(buffer);
 
-        if (ERRCODE == 0) {
-            ERRCODE = LEXER_ERROR;
-        }
+        setErrCode(LEXER_ERROR);
 
         fprintf(stderr,
                 "Lexical error at %zu:%zu: "
@@ -255,9 +247,7 @@ static LexerStatus lexer_read_identifier(Lexer *lexer, int first_character,
 allocation_error:
     free(buffer);
 
-    if (ERRCODE == 0) {
-        ERRCODE = LEXER_INTERNAL_ERROR;
-    }
+    setErrCode(LEXER_INTERNAL_ERROR);
 
     fprintf(stderr,
             "Internal lexer error at %zu:%zu: "
@@ -279,9 +269,7 @@ allocation_error:
  */
 Lexer *lexer_create(FILE *input) {
     if (input == NULL) {
-        if (ERRCODE == 0) {
-            ERRCODE = LEXER_INTERNAL_ERROR;
-        }
+        setErrCode(LEXER_INTERNAL_ERROR);
 
         fprintf(stderr, "Internal lexer error: input stream is NULL.\n");
         return NULL;
@@ -290,9 +278,7 @@ Lexer *lexer_create(FILE *input) {
     Lexer *lexer = malloc(sizeof *lexer);
 
     if (lexer == NULL) {
-        if (ERRCODE == 0) {
-            ERRCODE = LEXER_INTERNAL_ERROR;
-        }
+        setErrCode(LEXER_INTERNAL_ERROR);
 
         fprintf(stderr, "Internal lexer error: lexer allocation failed.\n");
         return NULL;
@@ -380,9 +366,7 @@ LexerStatus get_token(Lexer *lexer, Token *out_token) {
                 size_t tab_column = lexer->leading_tab_column;
                 lexer->leading_tab_column = 0;
 
-                if (ERRCODE == 0) {
-                    ERRCODE = LEXER_ERROR;
-                }
+                setErrCode(LEXER_ERROR);
 
                 fprintf(stderr,
                         "Lexical error at %zu:%zu: "
@@ -394,9 +378,7 @@ LexerStatus get_token(Lexer *lexer, Token *out_token) {
 
             if (starts_physical_line && lexer->paren_depth > 0 &&
                 lexer->physical_indent <= lexer->logical_indent) {
-                if (ERRCODE == 0) {
-                    ERRCODE = LEXER_ERROR;
-                }
+                setErrCode(LEXER_ERROR);
 
                 fprintf(stderr,
                         "Lexical error at %zu:%zu: "
@@ -565,9 +547,7 @@ LexerStatus get_token(Lexer *lexer, Token *out_token) {
         }
 
         if (next_character != character) {
-            if (ERRCODE == 0) {
-                ERRCODE = LEXER_ERROR;
-            }
+            setErrCode(LEXER_ERROR);
 
             fprintf(stderr,
                     "Lexical error at %zu:%zu: expected '%c' after '%c'.\n",
@@ -659,9 +639,7 @@ LexerStatus get_token(Lexer *lexer, Token *out_token) {
             break;
         }
         /* TODO: Implement recognition of the remaining tokens. */
-        if (ERRCODE == 0) {
-            ERRCODE = LEXER_INTERNAL_ERROR;
-        }
+        setErrCode(LEXER_INTERNAL_ERROR);
 
         fprintf(stderr,
                 "Internal lexer error at %zu:%zu: "
