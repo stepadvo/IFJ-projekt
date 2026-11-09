@@ -1,7 +1,7 @@
 CC = gcc
 CXX = g++
-CFLAGS = -Wall -Werror -Wextra -Iinclude -std=c11
-CXXFLAGS = -Wall -Werror -Wextra -Iinclude -std=c++17
+CFLAGS = -Wall -Werror -Wextra -Iinclude -std=c11 -g
+CXXFLAGS = -Wall -Werror -Wextra -Iinclude -std=c++17 -g
 LDFLAGS = -lgtest -lgtest_main -pthread -lstdc++
 
 VPATH=src:test:include
