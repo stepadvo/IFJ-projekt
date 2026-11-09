@@ -210,36 +210,51 @@ int symTableInsertVar(const char *id, varType dataType, bool isConst) {
     if (locTable->blockNum <= 0)
         return 4;
 
+    if (dataType == UNKNOWN || dataType == ANY)
+        return 3;
+
     size_t *foundVarIdxP = BSTSearch(locTable->tree, id);
 
     // if a variable with the same id is found
     if (foundVarIdxP) {
         if (locTable->varArr[*foundVarIdxP].pubData.blockDepth ==
-            locTable->blockNum) {
-            // the found variable is in the current block
+                locTable->blockNum ||
+            locTable->blockNum == 1) {
+            // the found variable is in the current block or we are in the first
+            // block and it is a parameter
             return 1;
         }
 
         // else create a new variable and mask the old one
         int varIdx = locTableInsertVar(
-            locTable, (varDataPriv){{.id = id,
-                                     .dataType = dataType,
-                                     .isConst = isConst,
-                                     .blockDepth = locTable->blockNum},
-                                    *foundVarIdxP});
+            locTable,
+            (varDataPriv){{.id = locTable->varArr[*foundVarIdxP]
+                                     .pubData.id, // copy the id from the data
+                                                  // we are masking
+                           .dataType = dataType,
+                           .isConst = isConst,
+                           .blockDepth = locTable->blockNum},
+                          *foundVarIdxP});
         if (varIdx < 0)
             return -1;
         *foundVarIdxP = varIdx;
     } else {
         // else create a new variable
         int varIdx = locTableInsertVar(
-            locTable, (varDataPriv){{.id = id,
-                                     .dataType = dataType,
-                                     .isConst = isConst,
-                                     .blockDepth = locTable->blockNum},
-                                    -1});
+            locTable,
+            (varDataPriv){{.id = NULL, // for now, it will be replaced soon
+                           .dataType = dataType,
+                           .isConst = isConst,
+                           .blockDepth = locTable->blockNum},
+                          -1});
         if (varIdx < 0)
             return -1;
+
+        char *idPtr;
+        if (BSTInsert(locTable->tree, id, varIdx, &idPtr) != 0) {
+            return -1;
+        }
+        locTable->varArr[varIdx].pubData.id = idPtr;
     }
     return 0;
 }
@@ -314,7 +329,8 @@ int beginBlock(void) {
     // set the top of the new block as the top of the previous block
     locTable->blockTops[locTable->blockNum + 1] =
         locTable->blockTops[locTable->blockNum];
-    return locTable->blockNum++;
+    locTable->blockNum++;
+    return locTable->blockNum;
 }
 
 int endBlock(void) {
@@ -345,7 +361,8 @@ int endBlock(void) {
     }
 
     // decrease the number of blocks
-    return locTable->blockNum--;
+    locTable->blockNum--;
+    return locTable->blockNum;
 }
 
 int symTableBlockDepth(void) {
@@ -421,17 +438,27 @@ int locTableInsertVar(vSymTable *locTable, varDataPriv data) {
     // make sure the array is big enough
     int firstUnusedIdx = locTable->blockTops[locTable->blockNum];
     if (locTable->varArrCapacity <= firstUnusedIdx) {
-        varDataPriv *newArr =
-            realloc(locTable->varArr,
-                    sizeof(varDataPriv) * locTable->varArrCapacity * 2);
+        // resize the previous array to fit the new variable
+        int newCap;
+        varDataPriv *newArr;
+        if (locTable->varArrCapacity == 0) {
+            // start at 32 so short functions don't need any other allocation
+            newCap = 32;
+            newArr = malloc(sizeof(varDataPriv) * newCap);
+        } else {
+            newCap = locTable->varArrCapacity * 2;
+            newArr = realloc(locTable->varArr, sizeof(varDataPriv) * newCap);
+        }
 
         if (!newArr) {
             setErrCode(99);
             return -1;
         }
 
-        locTable->varArrCapacity *= 2;
+        locTable->varArr = newArr;
+        locTable->varArrCapacity = newCap;
     }
+
     // insert the new variable
     locTable->varArr[firstUnusedIdx] = data;
     locTable->blockTops[locTable->blockNum]++;
@@ -441,7 +468,7 @@ int locTableInsertVar(vSymTable *locTable, varDataPriv data) {
 int symTableGetFunNum() { return BSTSize(gFunctionTable.tree); }
 
 int symTableGetVisVarNum() {
-    if (!gFunctionTable.active->localTable.tree)
+    if (!gFunctionTable.active)
         return -1;
     return BSTSize(gFunctionTable.active->localTable.tree);
 }
