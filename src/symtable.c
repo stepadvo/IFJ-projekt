@@ -111,8 +111,8 @@ int symTableInsertFun(const char *id, varType retType, int paramCount,
                       paramData params[]) {
     // insert the id into the BST
     char *funId; // for keeping the ptr to the id
-    int inserted = BSTInsert(gFunctionTable.tree, id,
-                             gFunctionTable.funArrSize + 1, &funId);
+    int inserted =
+        BSTInsert(gFunctionTable.tree, id, gFunctionTable.funArrSize, &funId);
     if (inserted == -2)
         return 1; // the key is duplicate
     if (inserted != 0)
@@ -380,7 +380,7 @@ int locSymTableInit(vSymTable *table, int paramCount, paramData params[]) {
             free(paramArr);
             return -1;
         }
-        varDataPriv param = {{key, params[0].dataType, true, 0}, -1};
+        varDataPriv param = {{key, params[i].dataType, true, 0}, -1};
         paramArr[i] = param;
     }
 
