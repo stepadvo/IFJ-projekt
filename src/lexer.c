@@ -8,6 +8,8 @@
  */
 #include "lexer.h"
 #include "compiler.h"
+#include <errno.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,6 +33,9 @@ struct Lexer {
     size_t leadingTabColumn;  /**< First leading tab column; zero if absent. */
     size_t logicalIndent; /**< Indentation of the logical line's first physical
                               line. */
+    int pendingCharacter; /**< Buffered character, or EOF when empty. */
+    bool physicalLineHasToken; /**< Whether this physical line has an actual
+                                  token. */
 };
 
 /**
@@ -42,7 +47,15 @@ struct Lexer {
  *         if reading fails.
  */
 static LexerStatus lexerReadChar(Lexer *lexer, int *outChar) {
-    int character = fgetc(lexer->input);
+    int character;
+
+    if (lexer->pendingCharacter != EOF) {
+        character = lexer->pendingCharacter;
+        lexer->pendingCharacter = EOF;
+    } else {
+        character = fgetc(lexer->input);
+    }
+
     *outChar = character;
 
     if (character == EOF) {
@@ -81,6 +94,11 @@ static LexerStatus lexerReadChar(Lexer *lexer, int *outChar) {
  */
 static LexerStatus lexerPeekChar(Lexer *lexer, int *outChar) {
     *outChar = EOF;
+
+    if (lexer->pendingCharacter != EOF) {
+        *outChar = lexer->pendingCharacter;
+        return LEXER_OK;
+    }
 
     int character = fgetc(lexer->input);
 
@@ -257,6 +275,341 @@ allocationError:
     return LEXER_INTERNAL_ERROR;
 }
 
+/** @brief Checks whether a character is an ASCII decimal digit. */
+static bool lexerIsDigit(int character) {
+    return character >= '0' && character <= '9';
+}
+
+/** @brief Appends a character and keeps the number buffer null-terminated. */
+static LexerStatus lexerAppendNumberChar(Lexer *lexer, char **buffer,
+                                         size_t *length, size_t *capacity,
+                                         int character) {
+    if (*capacity == 0 || *length == *capacity - 1) {
+        if (*capacity > SIZE_MAX / 2) {
+            goto allocationError;
+        }
+
+        size_t newCapacity = *capacity == 0 ? 32 : *capacity * 2;
+        char *newBuffer = realloc(*buffer, newCapacity);
+
+        if (newBuffer == NULL) {
+            goto allocationError;
+        }
+
+        *buffer = newBuffer;
+        *capacity = newCapacity;
+    }
+
+    (*buffer)[(*length)++] = (char)character;
+    (*buffer)[*length] = '\0';
+    return LEXER_OK;
+
+allocationError:
+    setErrCode(LEXER_INTERNAL_ERROR);
+    fprintf(stderr,
+            "Internal lexer error at %zu:%zu: "
+            "number buffer allocation failed.\n",
+            lexer->line, lexer->column);
+    return LEXER_INTERNAL_ERROR;
+}
+
+/**
+ * @brief Reads digits, omitting separators from the resulting buffer.
+ * @param previousIsDigit Whether a digit was already appended for this part.
+ * @return LEXER_ERROR if a required digit is missing or a separator is
+ * misplaced. Lexical diagnostics are left to lexerReadNumber().
+ */
+static LexerStatus lexerReadNumberDigits(Lexer *lexer, char **buffer,
+                                         size_t *length, size_t *capacity,
+                                         bool previousIsDigit) {
+    while (true) {
+        int character;
+        LexerStatus status = lexerPeekChar(lexer, &character);
+
+        if (status != LEXER_OK) {
+            return status;
+        }
+
+        if (lexerIsDigit(character)) {
+            status = lexerReadChar(lexer, &character);
+            if (status != LEXER_OK) {
+                return status;
+            }
+
+            status = lexerAppendNumberChar(lexer, buffer, length, capacity,
+                                           character);
+            if (status != LEXER_OK) {
+                return status;
+            }
+
+            previousIsDigit = true;
+        } else if (character == '_' && previousIsDigit) {
+            status = lexerReadChar(lexer, &character);
+            if (status != LEXER_OK) {
+                return status;
+            }
+
+            previousIsDigit = false;
+        } else {
+            break;
+        }
+    }
+
+    return previousIsDigit ? LEXER_OK : LEXER_ERROR;
+}
+
+/**
+ * @brief Reads a decimal integer or floating-point literal.
+ * @param firstCharacter Already consumed digit or dot followed by a digit.
+ * @param outToken Receives the type and value only on success.
+ */
+static LexerStatus lexerReadNumber(Lexer *lexer, int firstCharacter,
+                                   Token *outToken) {
+    char *buffer = NULL;
+    size_t length = 0;
+    size_t capacity = 0;
+    bool isDouble = firstCharacter == '.';
+    int character;
+
+    LexerStatus status = lexerAppendNumberChar(lexer, &buffer, &length,
+                                               &capacity, firstCharacter);
+    if (status != LEXER_OK) {
+        goto failure;
+    }
+
+    status =
+        lexerReadNumberDigits(lexer, &buffer, &length, &capacity, !isDouble);
+    if (status != LEXER_OK) {
+        goto failure;
+    }
+
+    status = lexerPeekChar(lexer, &character);
+    if (status != LEXER_OK) {
+        goto failure;
+    }
+
+    if (!isDouble && character == '.') {
+        status = lexerReadChar(lexer, &character);
+        if (status != LEXER_OK) {
+            goto failure;
+        }
+
+        status = lexerPeekChar(lexer, &character);
+        if (status != LEXER_OK) {
+            goto failure;
+        }
+
+        if (lexerIsDigit(character)) {
+            isDouble = true;
+            status =
+                lexerAppendNumberChar(lexer, &buffer, &length, &capacity, '.');
+            if (status != LEXER_OK) {
+                goto failure;
+            }
+
+            status = lexerReadNumberDigits(lexer, &buffer, &length, &capacity,
+                                           false);
+            if (status != LEXER_OK) {
+                goto failure;
+            }
+        } else {
+            /* The dot belongs to the next token, e.g. in 42.toDouble. */
+            lexer->pendingCharacter = '.';
+            lexer->column--;
+        }
+    }
+
+    status = lexerPeekChar(lexer, &character);
+    if (status != LEXER_OK) {
+        goto failure;
+    }
+
+    if (character == 'e' || character == 'E') {
+        isDouble = true;
+        status = lexerReadChar(lexer, &character);
+        if (status != LEXER_OK) {
+            goto failure;
+        }
+
+        status = lexerAppendNumberChar(lexer, &buffer, &length, &capacity,
+                                       character);
+        if (status != LEXER_OK) {
+            goto failure;
+        }
+
+        status = lexerPeekChar(lexer, &character);
+        if (status != LEXER_OK) {
+            goto failure;
+        }
+
+        if (character == '+' || character == '-') {
+            status = lexerReadChar(lexer, &character);
+            if (status != LEXER_OK) {
+                goto failure;
+            }
+
+            status = lexerAppendNumberChar(lexer, &buffer, &length, &capacity,
+                                           character);
+            if (status != LEXER_OK) {
+                goto failure;
+            }
+        }
+
+        status =
+            lexerReadNumberDigits(lexer, &buffer, &length, &capacity, false);
+        if (status != LEXER_OK) {
+            goto failure;
+        }
+    }
+
+    status = lexerPeekChar(lexer, &character);
+    if (status != LEXER_OK) {
+        goto failure;
+    }
+
+    if (isDouble && (character == 'd' || character == 'D')) {
+        status = lexerReadChar(lexer, &character);
+        if (status != LEXER_OK) {
+            goto failure;
+        }
+    }
+
+    status = lexerPeekChar(lexer, &character);
+    if (status != LEXER_OK) {
+        goto failure;
+    }
+
+    if (lexerIsDigit(character) || (character >= 'a' && character <= 'z') ||
+        (character >= 'A' && character <= 'Z') || character == '_') {
+        goto lexicalError;
+    }
+
+    char *end;
+    TokenAttribute attribute = {0};
+    errno = 0;
+
+    if (isDouble) {
+        double value = strtod(buffer, &end);
+        if (*end != '\0' || !isfinite(value) ||
+            (errno == ERANGE && value == 0.0)) {
+            goto lexicalError;
+        }
+
+        attribute.doubleValue = value;
+    } else {
+        long long value = strtoll(buffer, &end, 10);
+        if (*end != '\0' || errno == ERANGE || value > INT64_MAX ||
+            (buffer[0] == '0' && value != 0)) {
+            goto lexicalError;
+        }
+
+        attribute.intValue = (int64_t)value;
+    }
+
+    free(buffer);
+    outToken->attribute = attribute;
+    outToken->type = isDouble ? TOKEN_DOUBLE_LITERAL : TOKEN_INT_LITERAL;
+    return LEXER_OK;
+
+lexicalError:
+    status = LEXER_ERROR;
+
+failure:
+    free(buffer);
+    if (status == LEXER_ERROR) {
+        setErrCode(LEXER_ERROR);
+        fprintf(stderr, "Lexical error at %zu:%zu: invalid numeric literal.\n",
+                outToken->line, outToken->column);
+    }
+    return status;
+}
+
+/** @brief Skips a line comment, leaving LF or EOF for getToken(). */
+static LexerStatus lexerSkipLineComment(Lexer *lexer) {
+    while (true) {
+        int character;
+        LexerStatus status = lexerPeekChar(lexer, &character);
+        if (status != LEXER_OK) {
+            return status;
+        }
+
+        if (character == '\n' || character == EOF) {
+            return LEXER_OK;
+        }
+
+        status = lexerReadChar(lexer, &character);
+        if (status != LEXER_OK) {
+            return status;
+        }
+    }
+}
+
+/** @brief Skips a possibly nested block comment after its opening delimiter. */
+static LexerStatus lexerSkipBlockComment(Lexer *lexer,
+                                         const Token *commentStart,
+                                         bool *containsNewline) {
+    size_t depth = 1;
+    *containsNewline = false;
+
+    while (depth > 0) {
+        int character;
+        LexerStatus status = lexerReadChar(lexer, &character);
+        if (status != LEXER_OK) {
+            return status;
+        }
+
+        if (character == EOF) {
+            setErrCode(LEXER_ERROR);
+            fprintf(stderr,
+                    "Lexical error at %zu:%zu: unterminated block comment.\n",
+                    commentStart->line, commentStart->column);
+            return LEXER_ERROR;
+        }
+
+        if (character == '\n') {
+            *containsNewline = true;
+            continue;
+        }
+
+        if (character != '/' && character != '*') {
+            continue;
+        }
+
+        int nextCharacter;
+        status = lexerPeekChar(lexer, &nextCharacter);
+        if (status != LEXER_OK) {
+            return status;
+        }
+
+        if (character == '/' && nextCharacter == '*') {
+            status = lexerReadChar(lexer, &nextCharacter);
+            if (status != LEXER_OK) {
+                return status;
+            }
+
+            if (depth == SIZE_MAX) {
+                setErrCode(LEXER_INTERNAL_ERROR);
+                fprintf(stderr,
+                        "Internal lexer error at %zu:%zu: "
+                        "block comment nesting is too deep.\n",
+                        lexer->line, lexer->column);
+                return LEXER_INTERNAL_ERROR;
+            }
+
+            depth++;
+        } else if (character == '*' && nextCharacter == '/') {
+            status = lexerReadChar(lexer, &nextCharacter);
+            if (status != LEXER_OK) {
+                return status;
+            }
+
+            depth--;
+        }
+    }
+
+    return LEXER_OK;
+}
+
 /**
  * @brief Allocates and initializes a lexer context.
  *
@@ -285,6 +638,7 @@ Lexer *lexerCreate(FILE *input) {
     }
 
     lexer->input = input;
+    lexer->pendingCharacter = EOF;
     lexer->line = 1;
     lexer->column = 1;
     lexer->lineHasToken = false;
@@ -292,6 +646,7 @@ Lexer *lexerCreate(FILE *input) {
     lexer->newlineSinceToken = false;
     lexer->physicalIndent = 0;
     lexer->atPhysicalLineStart = true;
+    lexer->physicalLineHasToken = false;
     lexer->leadingTabColumn = 0;
     lexer->logicalIndent = 0;
 
@@ -313,13 +668,13 @@ LexerStatus getToken(Lexer *lexer, Token *outToken) {
 
     int character;
     LexerStatus status;
+    bool requireLineEnd = false;
 
     while (true) {
         outToken->line = lexer->line;
         outToken->column = lexer->column;
 
         status = lexerPeekChar(lexer, &character);
-
         if (status != LEXER_OK) {
             return status;
         }
@@ -336,7 +691,6 @@ LexerStatus getToken(Lexer *lexer, Token *outToken) {
         }
 
         status = lexerReadChar(lexer, &character);
-
         if (status != LEXER_OK) {
             return status;
         }
@@ -345,7 +699,6 @@ LexerStatus getToken(Lexer *lexer, Token *outToken) {
             if (lexer->atPhysicalLineStart) {
                 lexer->physicalIndent++;
             }
-
             continue;
         }
 
@@ -353,54 +706,102 @@ LexerStatus getToken(Lexer *lexer, Token *outToken) {
             if (lexer->atPhysicalLineStart && lexer->leadingTabColumn == 0) {
                 lexer->leadingTabColumn = outToken->column;
             }
-
             continue;
         }
 
-        if (character != '\n') {
-            bool startsPhysicalLine = lexer->atPhysicalLineStart;
-            lexer->atPhysicalLineStart = false;
+        if (character == '\n') {
+            lexer->physicalIndent = 0;
+            lexer->atPhysicalLineStart = true;
+            lexer->physicalLineHasToken = false;
+            lexer->leadingTabColumn = 0;
+            lexer->newlineSinceToken = true;
+            requireLineEnd = false;
 
-            if (lexer->leadingTabColumn != 0) {
-                size_t tabColumn = lexer->leadingTabColumn;
-                lexer->leadingTabColumn = 0;
-
-                setErrCode(LEXER_ERROR);
-
-                fprintf(stderr,
-                        "Lexical error at %zu:%zu: "
-                        "tab is not allowed in indentation.\n",
-                        outToken->line, tabColumn);
-
-                return LEXER_ERROR;
+            if (lexer->parenDepth == 0 && lexer->lineHasToken) {
+                outToken->type = TOKEN_NEWLINE;
+                lexer->lineHasToken = false;
+                return LEXER_OK;
             }
-
-            if (startsPhysicalLine && lexer->parenDepth > 0 &&
-                lexer->physicalIndent <= lexer->logicalIndent) {
-                setErrCode(LEXER_ERROR);
-
-                fprintf(stderr,
-                        "Lexical error at %zu:%zu: "
-                        "continuation line must be indented more than "
-                        "the first line of the logical line.\n",
-                        outToken->line, outToken->column);
-
-                return LEXER_ERROR;
-            }
-
-            break;
+            continue;
         }
 
-        lexer->physicalIndent = 0;
-        lexer->atPhysicalLineStart = true;
-        lexer->leadingTabColumn = 0;
-        lexer->newlineSinceToken = true;
-
-        if (lexer->parenDepth == 0 && lexer->lineHasToken) {
-            outToken->type = TOKEN_NEWLINE;
-            lexer->lineHasToken = false;
-            return LEXER_OK;
+        if (requireLineEnd) {
+            setErrCode(LEXER_ERROR);
+            fprintf(stderr,
+                    "Lexical error at %zu:%zu: "
+                    "only whitespace may follow a multiline block comment "
+                    "on its closing line.\n",
+                    outToken->line, outToken->column);
+            return LEXER_ERROR;
         }
+
+        if (character == '/') {
+            int nextCharacter;
+            status = lexerPeekChar(lexer, &nextCharacter);
+            if (status != LEXER_OK) {
+                return status;
+            }
+
+            if (nextCharacter == '/' || nextCharacter == '*') {
+                status = lexerReadChar(lexer, &nextCharacter);
+                if (status != LEXER_OK) {
+                    return status;
+                }
+
+                lexer->atPhysicalLineStart = false;
+
+                if (nextCharacter == '/') {
+                    status = lexerSkipLineComment(lexer);
+                    if (status != LEXER_OK) {
+                        return status;
+                    }
+                } else {
+                    bool containsNewline;
+                    status = lexerSkipBlockComment(lexer, outToken,
+                                                   &containsNewline);
+                    if (status != LEXER_OK) {
+                        return status;
+                    }
+
+                    if (containsNewline) {
+                        lexer->physicalIndent = 0;
+                        lexer->physicalLineHasToken = false;
+                        lexer->leadingTabColumn = 0;
+                        lexer->newlineSinceToken = true;
+                        requireLineEnd = true;
+                    }
+                }
+                continue;
+            }
+        }
+
+        bool startsPhysicalLine = !lexer->physicalLineHasToken;
+        lexer->atPhysicalLineStart = false;
+        lexer->physicalLineHasToken = true;
+
+        if (lexer->leadingTabColumn != 0) {
+            size_t tabColumn = lexer->leadingTabColumn;
+            lexer->leadingTabColumn = 0;
+            setErrCode(LEXER_ERROR);
+            fprintf(stderr,
+                    "Lexical error at %zu:%zu: "
+                    "tab is not allowed in indentation.\n",
+                    outToken->line, tabColumn);
+            return LEXER_ERROR;
+        }
+
+        if (startsPhysicalLine && lexer->parenDepth > 0 &&
+            lexer->physicalIndent <= lexer->logicalIndent) {
+            setErrCode(LEXER_ERROR);
+            fprintf(stderr,
+                    "Lexical error at %zu:%zu: "
+                    "continuation line must be indented more than "
+                    "the first line of the logical line.\n",
+                    outToken->line, outToken->column);
+            return LEXER_ERROR;
+        }
+
+        break;
     }
 
     TokenType type;
@@ -436,7 +837,6 @@ LexerStatus getToken(Lexer *lexer, Token *outToken) {
         break;
 
     case '/':
-        /* TODO: Distinguish division from comment starts. */
         type = TOKEN_DIVIDE;
         break;
 
@@ -600,8 +1000,21 @@ LexerStatus getToken(Lexer *lexer, Token *outToken) {
     }
 
     case '.': {
-        type = TOKEN_DOT;
-        /* TODO: Recognize floating-point literals starting with a dot. */
+        int nextCharacter;
+        status = lexerPeekChar(lexer, &nextCharacter);
+        if (status != LEXER_OK) {
+            return status;
+        }
+
+        if (lexerIsDigit(nextCharacter)) {
+            status = lexerReadNumber(lexer, character, outToken);
+            if (status != LEXER_OK) {
+                return status;
+            }
+            type = outToken->type;
+        } else {
+            type = TOKEN_DOT;
+        }
         break;
     }
 
@@ -611,6 +1024,15 @@ LexerStatus getToken(Lexer *lexer, Token *outToken) {
     }
 
     default:
+        if (lexerIsDigit(character)) {
+            status = lexerReadNumber(lexer, character, outToken);
+            if (status != LEXER_OK) {
+                return status;
+            }
+            type = outToken->type;
+            break;
+        }
+
         if ((character >= 'a' && character <= 'z') ||
             (character >= 'A' && character <= 'Z') || character == '_') {
             status = lexerReadIdentifier(lexer, character,
