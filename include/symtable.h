@@ -203,6 +203,35 @@ int endBlock(void);
  */
 int symTableBlockDepth(void);
 
+/**
+ * @brief returns the number of function symbols in the global symbol table
+ */
+int symTableGetFunNum(void);
+
+/**
+ * @brief returns the number of visible symbols in the local table of the active
+ * function
+ *
+ * @return -1 when no function is active else the number of visible (not masked)
+ * symbols
+ */
+int symTableGetVisVarNum(void);
+
+/**
+ * @brief returns the number of all symbols in the local table of the active
+ * function
+ *
+ * @return -1 when no function is active else the number of all symbols
+ */
+int symTableGetVarNum(void);
+
+/* @brief returns whether the global function table is empty */
+bool symTableIsEmpty(void);
+
+/* @brief returns 1 if the local table of the active function is empty, 0 if
+ * not, -1 it no function is active */
+int symTableIsLocEmpty(void);
+
 #endif
 
 /*

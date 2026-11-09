@@ -438,6 +438,29 @@ int locTableInsertVar(vSymTable *locTable, varDataPriv data) {
     return firstUnusedIdx;
 }
 
+int symTableGetFunNum() { return BSTSize(gFunctionTable.tree); }
+
+int symTableGetVisVarNum() {
+    if (!gFunctionTable.active->localTable.tree)
+        return -1;
+    return BSTSize(gFunctionTable.active->localTable.tree);
+}
+
+int symTableGetVarNum() {
+    if (!gFunctionTable.active)
+        return -1;
+    vSymTable locTable = gFunctionTable.active->localTable;
+    return locTable.blockTops[locTable.blockNum];
+}
+
+bool symTableIsEmpty() { return BSTSize(gFunctionTable.tree) == 0; }
+
+int symTableIsLocEmpty() {
+    if (!gFunctionTable.active)
+        return -1;
+    return BSTSize(gFunctionTable.active->localTable.tree) == 0;
+}
+
 /*
  * end symtable.c
  */
