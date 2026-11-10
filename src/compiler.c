@@ -1,35 +1,25 @@
 #include "compiler.h"
 #include "ast.h"
+#include "ast_print.h"
 #include "parser.h"
 #include "symtable.h"
 #include <stdio.h>
 #include <stdlib.h>
 
 int main(int argc, char *argv[]) {
-    ERRCODE = 0;
-
     (void)argc;
     (void)argv;
+    ERRCODE = 0;
 
-    // 1. Initialize the global symbol table
-    if (symTableInit() != 0) {
-        fprintf(stderr, "Internal error: Failed to init symbol table\n");
-        return 99;
-    }
+    astNode *root = parse();
 
-    // SA
-    astNode *ast_root = parse();
+#ifdef DEBUG_AST
+    printAst(root);
+#endif
 
-    // TODO: Semantic analysis
-    // TODO: Code generator
+    freeAst(root);
 
-    // Free AST
-    if (ast_root != NULL) {
-        freeAst(ast_root);
-    }
-    symTableDestruct();
-
-    if (ERRCODE != 0) {
+    if (ERRCODE != EXIT_SUCCESS) {
         fprintf(stderr, "\
 ==================================\n\
  Compilation ended unsuccessfully.\n\
