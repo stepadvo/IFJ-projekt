@@ -1,7 +1,8 @@
 #include "compiler.h"
 #include "ast.h"
-#include "parser.h"
+#include "ast_print.h"
 #include "symtable.h"
+#include "parser.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -10,7 +11,13 @@ int main(int argc, char *argv[]) {
     (void)argv;
     ERRCODE = 0;
 
-    // TODO call parser
+    astNode *root = parse();
+
+    #ifdef DEBUG_AST
+    printAst(root);
+    #endif
+
+    freeAst(root);
 
     if (ERRCODE != EXIT_SUCCESS) {
         fprintf(stderr, "\
