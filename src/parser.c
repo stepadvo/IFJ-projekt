@@ -15,73 +15,79 @@
 #include <string.h>
 
 static Lexer *lexer = NULL;
-static Token current_token = {0};
+static Token currentToken = {0};
 
-/** Read the next token. get_token() also frees the previous one. */
+/** Read the next token. getToken() also frees the previous one. */
 static bool advance(void) {
-    LexerStatus status = get_token(lexer, &current_token);
+    LexerStatus status = getToken(lexer, &currentToken);
 
-    if (status == LEXER_OK) {
+    if (status == LEXER_OK)
         return true;
-    }
-
-    if (status == LEXER_INTERNAL_ERROR) {
+    if (status == LEXER_INTERNAL_ERROR)
         ERRCODE = 99;
-    } else if (ERRCODE == 0) {
+    else if (ERRCODE == 0)
         ERRCODE = 1;
-    }
     return false;
 }
 
 /** Report a syntax error and remember its error code. */
 static void syntaxError(const char *message) {
-    fprintf(stderr, "Syntax error at line %zu: %s\n", current_token.line,
+    fprintf(stderr, "Syntax error at line %zu: %s\n", currentToken.line,
             message);
     if (ERRCODE == 0) {
         ERRCODE = 2;
     }
+
+    return;
 }
 
 /** Check the current token and move to the next one. */
-static bool expect(TokenType expected) {
-    if (current_token.type != expected) {
-        syntaxError("unexpected token");
+static bool match(TokenType expected, const char *errMessage) {
+    if (currentToken.type != expected) {
+        syntaxError(errMessage);
         return false;
     }
+
     return advance();
 }
 
 /** Parse the mandatory first line: import ifj26.* */
 static bool parseProlog(void) {
-    if (!expect(TOKEN_KW_IMPORT)) {
-        return false;
-    }
+    const TokenType prolog[] = {TOKEN_KW_IMPORT, TOKEN_IDENTIFIER, TOKEN_DOT,
+                                TOKEN_MULTIPLY, TOKEN_NEWLINE};
 
-    if (current_token.type != TOKEN_IDENTIFIER ||
-        strcmp(current_token.attribute.text.data, "ifj26") != 0) {
-        syntaxError("expected 'ifj26' after import");
-        return false;
-    }
+    const char *errMessages[] = {
+        "expected 'import'", "expected 'ifj26' after 'import'",
+        "expected '.' after 'ifj26'", "expected '*' after '.'",
+        "expected '\\n' after '*'"};
 
-    return advance() && expect(TOKEN_DOT) && expect(TOKEN_MULTIPLY) &&
-           expect(TOKEN_NEWLINE);
+    for (size_t i = 0; i < 5; i++) {
+        if (i == 1 && currentToken.type == TOKEN_IDENTIFIER) {
+            if (strcmp(currentToken.attribute.text.data, "ifj26")) {
+                syntaxError(errMessages[i]);
+                return false;
+            }
+        }
+
+        if (!match(prolog[i], errMessages[i]))
+            return false;
+    }
+    return true;
 }
 
 /** Start parsing and release the lexer after use. */
 astNode *parse(void) {
-
-    current_token = (Token){0};
-    lexer = lexer_create(stdin);
+    currentToken = (Token){0};
+    lexer = lexerCreate(stdin);
     if (lexer == NULL) {
         fprintf(stderr, "Internal error: could not create lexer\n");
         ERRCODE = 99;
         return NULL;
     }
-
     astNode *root = NULL;
 
     if (advance() && parseProlog()) {
-        if (current_token.type == TOKEN_EOF) {
+        if (currentToken.type == TOKEN_EOF) {
             root = createProgramNode();
             // TODO: Check for @main during semantic analysis.
         } else {
@@ -90,8 +96,8 @@ astNode *parse(void) {
         }
     }
 
-    token_free(&current_token);
-    lexer_destroy(lexer);
+    tokenFree(&currentToken);
+    lexerDestroy(lexer);
     lexer = NULL;
     return root;
 }
