@@ -9,19 +9,17 @@
 #ifndef SYMTABLE_H
     #define SYMTABLE_H
 
-    #include "compiler.h"
-    #include <stdbool.h>
-    #include <stdlib.h>
+#include "compiler.h"
+#include <stdbool.h>
+#include <stdlib.h>
 
-    #define MAX_BLOCKS 128
+#define MAX_BLOCKS 128
 
 /** @brief structe containing data about the var symbol (var or val) */
 typedef struct {
     const char *id;
     varType dataType;
-    bool isTypeSet; /** true when the data type is already explicitely set,
-                       false when the data type is only expected */
-    bool isConst;   /** for parameters set to true */
+    bool isConst; /** for parameters set to true */
     int blockDepth;
 } varData;
 
@@ -29,8 +27,6 @@ typedef struct {
 typedef struct {
     const char *id;
     varType retType;
-    bool isTypeSet; /** true when the ret type is already explicitely set, false
-                       when the ret type is only expected */
     int paramCount;
 } funData;
 
@@ -57,8 +53,8 @@ void symTableClear(void);
  *
  * @param id the name of function, symTableInsertFun copies it into the symbol
  * structure
- * @param varType return data type of the function (if UNKNOWN or NUMERIC, the
- * retType will be initialized as not set, otherwise it will be set)
+ * @param varType return data type of the function (UNKNOWN if not explicitely
+ * set)
  * @param paramCount number of function parameters
  * @param params an array with the parameter data of size paramCount (inserted
  * from left to right)
@@ -68,12 +64,13 @@ void symTableClear(void);
  *
  * @details when the id is already in use, the global table will not be changed
  * @details the parameters will be numbered with their index in the input array
+ * @details use the ANY retType only for the built in functions
  */
 int symTableInsertFun(const char *id, varType retType, int paramCount,
                       paramData params[]);
 
 /**
- * @brief updates the return type as set
+ * @brief updates the return type
  *
  * @param active true when the updated function is the active function, false it
  * is the function with matching id
@@ -81,8 +78,7 @@ int symTableInsertFun(const char *id, varType retType, int paramCount,
  *
  * @return  0 when succesfully updated
  *          1 when no function is active/there is no function with matching id
- *          2 when the function retType has already been set (no changes to
- * function)
+ *          2 when the previous retType is not UNKNOWN (no changes)
  */
 int symTableSetNewRetType(bool active, const char *id, varType newRetType);
 
@@ -117,13 +113,14 @@ funData symTableGetActive(void);
  *
  * @param id the name of symbol, symTableInsertVar duplicates it to the symbol
  * structure
- * @param dataType data type of the symbol (if the type is UNKNOWN or NUMERIC
- * the dataType will be initialized as not set, otherwise it will be set)
+ * @param dataType data type of the symbol (don't use UNKNOWN or ANY)
  * @param isConst whether the value is constant (whether it is val or var)
  *
  * @return  0 on success
  *          1 when the id is already in use within the current block
  *          2 when no function is active
+ *          3 when the dataType is UNKNOWN or ANY
+ *          4 when there are no blocks in the function
  *          -1 on memory allocation error
  *
  * @details The id must be unique within a block. If an id is identical as an id
@@ -131,20 +128,6 @@ funData symTableGetActive(void);
  * when the current block is ended
  */
 int symTableInsertVar(const char *id, varType dataType, bool isConst);
-
-/**
- * @brief finds the var symbol with id in the active function and updates its
- * dataType
- *
- * @return  0 on success
- *          1 when no function is active
- *          2 when there is no var with matching id
- *          3 when the found var is a parameter
- *          4 when the data type is already set
- *
- * @details finds the symbol the same way as @ref symTableFindVar
- */
-int symTableSetNewVarType(const char *id, varType dataType);
 
 /**
  * @brief finds the symbol in the whole table int the active function starting
@@ -183,8 +166,8 @@ varData symTableFindVarCurrBlock(const char *id);
  * @return  data of the variable when the param is found
  *          {.id = NULL, .dataType = UNKNOWN} when no function
  *              is active / no function with matching id exists
- *          {.id = NULL, .dataType = NUMERIC} when the
- *              function doesn't have parameter with this number
+ *          {.id = NULL, .dataType = ANY} when the function doesn't have
+ * parameter with this number
  *
  * @details if active == true, the active function will be searched and id will
  * not be taken into account

@@ -7,10 +7,9 @@
  */
 
 #include "bst.h"
+#include "compiler.h"
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #define MAX(A, B) A > B ? A : B
@@ -36,7 +35,7 @@ struct Bst_s {
 bst_t *BSTInit(void) {
     bst_t *temp = malloc(sizeof(bst_t));
     if (!temp) {
-        // TODO set errcode
+        setErrCode(99);
         return NULL;
     }
 
@@ -79,14 +78,14 @@ void BSTClear(bst_t *tree) {
 bstNode_t *createNode(const char *key, size_t data, int *err, char **keyPtr) {
     bstNode_t *temp = malloc(sizeof(bstNode_t));
     if (!temp) {
-        // TODO set errcode
+        setErrCode(99);
         *err = -1;
         return NULL;
     }
 
     char *tempKey = malloc(strlen(key) + 1);
     if (!tempKey) {
-        // TODO set errcode
+        setErrCode(99);
         free(temp);
         *err = -1;
         return NULL;

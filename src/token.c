@@ -15,7 +15,7 @@
  *
  * @param token Initialized token to reset; NULL is allowed.
  */
-void token_free(Token *token) {
+void tokenFree(Token *token) {
     if (token == NULL) {
         return;
     }
