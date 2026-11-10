@@ -1,4 +1,7 @@
 #include "compiler.h"
+#include "ast.h"
+#include "parser.h"
+#include "symtable.h"
 #include <stdio.h>
 #include <stdlib.h>
 
