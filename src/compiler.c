@@ -2,6 +2,7 @@
 #include "ast.h"
 #include "parser.h"
 #include "symtable.h"
+#include "parser.h"
 #include <stdio.h>
 #include <stdlib.h>
 
