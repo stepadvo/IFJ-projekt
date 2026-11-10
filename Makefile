@@ -17,7 +17,7 @@ TEST_AST = test_ast
 TEST_STEMS = TEST_BST TEST_SYMTABLE TEST_AST # TEST_EXAMPLE ...
 
 #objects:
-OBJECTS = compiler.o parser.o ast.o lexer.o token.o symtable.o bst.o errcode.o
+OBJECTS = compiler.o parser.o ast.o lexer.o token.o symtable.o bst.o errcode.o ast_print.o
 #TEST_EXAMPLE_O = test_example.o src_example.o
 TEST_BST_O = bst.o test_bst.o errcode.o
 TEST_SYMTABLE_O = bst.o symtable.o test_symtable.o errcode.o
@@ -39,6 +39,10 @@ format:
 test: $(foreach t,$(TEST_STEMS),$($(t))_build)
 	@set -e; $(foreach t,$(TEST_STEMS),./$($(t)).out;)
 
+printast:
+	$(MAKE) clean
+	$(MAKE) CFLAGS="$(CFLAGS) -DDEBUG_AST" all
+
 define DEFINE_TEST_RULES =
 $($(1)): $($(1))_build
 	./$($(1)).out
@@ -49,4 +53,4 @@ endef
 
 $(foreach t,$(TEST_STEMS),$(eval $(call DEFINE_TEST_RULES,$(t))))
 
-.PHONY: all clean format
+.PHONY: all clean format printast test
