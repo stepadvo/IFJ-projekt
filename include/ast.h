@@ -3,10 +3,6 @@
  * @brief AST structures and functions used by the IFJ26 parser.
  * @author Jiří Dohnal, xdohnaj00@stud.fit.vutbr.cz
  *
- * The AST keeps the structure of a parsed program: functions, blocks,
- * statements and expressions. Every child node has one owner and is freed
- * together with its parent by freeAst(). Names stored in the AST are owned
- * by the AST as well. The symbol table is handled separately.
  */
 
 #ifndef AST_H
@@ -291,6 +287,15 @@ astNode *createForNode(char *iteratorName, astNode *start, astNode *end,
  * On success the for node owns guard.
  */
 int addGuardToFor(astNode *forNode, astNode *guard);
+
+/** Expression nodes. The returned node owns the supplied operands/name. */
+astNode *createBinopNode(TokenType op, astNode *left, astNode *right);
+astNode *createUnopNode(TokenType op, astNode *operand);
+astNode *createIdentifierNode(char *name);
+astNode *createFuncCallNode(char *name);
+int addArgumentToCall(astNode *callNode, astNode *argument);
+/** Unit literal, written (). */
+astNode *createUnitNode(void);
 
 /** Creates an assignment; the node owns name and value. */
 astNode *createAssignNode(char *name, astNode *value);
