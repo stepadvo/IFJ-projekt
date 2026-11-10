@@ -10,6 +10,7 @@
 
 extern "C" {
 #include "bst.h"
+#include "compiler.h"
 }
 
 /* tests generated using Gemini. Prompt:
@@ -21,9 +22,15 @@ class BstTest : public ::testing::Test {
   protected:
     bst_t *tree;
 
-    void SetUp() override { tree = BSTInit(); }
+    void SetUp() override {
+        tree = BSTInit();
+        ERRCODE = 0;
+    }
 
-    void TearDown() override { BSTDestruct(tree); }
+    void TearDown() override {
+        BSTDestruct(tree);
+        EXPECT_EQ(ERRCODE, 0);
+    }
 };
 
 TEST_F(BstTest, InitState) {

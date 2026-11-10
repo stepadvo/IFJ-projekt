@@ -7,10 +7,9 @@
  */
 
 #include "bst.h"
+#include "compiler.h"
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #define MAX(A, B) A > B ? A : B
@@ -36,7 +35,7 @@ struct Bst_s {
 bst_t *BSTInit(void) {
     bst_t *temp = malloc(sizeof(bst_t));
     if (!temp) {
-        // TODO set errcode
+        setErrCode(99);
         return NULL;
     }
 
@@ -55,6 +54,7 @@ void BSTClear_R(bstNode_t *root) {
     BSTClear_R(root->right);
     BSTClear_R(root->left);
 
+    free(root->key);
     free(root);
 }
 
@@ -79,14 +79,14 @@ void BSTClear(bst_t *tree) {
 bstNode_t *createNode(const char *key, size_t data, int *err, char **keyPtr) {
     bstNode_t *temp = malloc(sizeof(bstNode_t));
     if (!temp) {
-        // TODO set errcode
+        setErrCode(99);
         *err = -1;
         return NULL;
     }
 
     char *tempKey = malloc(strlen(key) + 1);
     if (!tempKey) {
-        // TODO set errcode
+        setErrCode(99);
         free(temp);
         *err = -1;
         return NULL;
@@ -315,6 +315,7 @@ bstNode_t *BSTRemove_R(bstNode_t *root, const char *key, size_t *oldData,
             bstNode_t *lChild = root->left;
             *err = 0;
             *oldData = root->data;
+            free(root->key);
             free(root);
             return lChild;
 
@@ -324,6 +325,7 @@ bstNode_t *BSTRemove_R(bstNode_t *root, const char *key, size_t *oldData,
             bstNode_t *rChild = root->right;
             *err = 0;
             *oldData = root->data;
+            free(root->key);
             free(root);
             return rChild;
 
@@ -332,6 +334,7 @@ bstNode_t *BSTRemove_R(bstNode_t *root, const char *key, size_t *oldData,
         else {
             *err = 0;
             *oldData = root->data;
+            free(root->key);
             free(root);
             return NULL;
         }

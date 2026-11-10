@@ -1,7 +1,7 @@
 CC = gcc
 CXX = g++
-CFLAGS = -Wall -Werror -Wextra -Iinclude -std=c11
-CXXFLAGS = -Wall -Werror -Wextra -Iinclude -std=c++17
+CFLAGS = -Wall -Werror -Wextra -Iinclude -std=c11 -g
+CXXFLAGS = -Wall -Werror -Wextra -Iinclude -std=c++17 -g
 LDFLAGS = -lgtest -lgtest_main -pthread -lstdc++
 
 VPATH=src:test:include
@@ -18,8 +18,8 @@ TEST_STEMS = TEST_BST TEST_SYMTABLE # TEST_EXAMPLE ...
 #objects:
 BUILD_O = compiler.o parser.o ast.o lexer.o token.o symtable.o bst.o
 #TEST_EXAMPLE_O = test_example.o src_example.o
-TEST_BST_O = bst.o test_bst.o
-TEST_SYMTABLE_O = symtable.o test_symtable.o
+TEST_BST_O = bst.o test_bst.o errcode.o
+TEST_SYMTABLE_O = bst.o symtable.o test_symtable.o errcode.o
 
 #rules:
 #add the build rules here
