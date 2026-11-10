@@ -10,17 +10,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-void checkMalloc(void *ptr)
-{
-    if (ptr == NULL)
-    {
+void checkMalloc(void *ptr) {
+    if (ptr == NULL) {
         fprintf(stderr, "Internal error: Memory allocation failed\n");
         exit(99);
     }
 }
 
-static astNode *newNode(astNodeType type)
-{
+static astNode *newNode(astNodeType type) {
     astNode *node = calloc(1, sizeof(*node));
     checkMalloc(node);
     node->type = type;
@@ -29,10 +26,8 @@ static astNode *newNode(astNodeType type)
 }
 
 static void appendNode(astNode ***items, size_t *count, size_t *capacity,
-                       astNode *node)
-{
-    if (*count == *capacity)
-    {
+                       astNode *node) {
+    if (*count == *capacity) {
         size_t newCapacity = *capacity ? *capacity * 2 : 4;
         astNode **newItems = realloc(*items, newCapacity * sizeof(**items));
         checkMalloc(newItems);
@@ -42,16 +37,11 @@ static void appendNode(astNode ***items, size_t *count, size_t *capacity,
     (*items)[(*count)++] = node;
 }
 
-astNode *createProgramNode(void)
-{
-    return newNode(AST_PROGRAM);
-}
+astNode *createProgramNode(void) { return newNode(AST_PROGRAM); }
 
-int addFunctionToProgram(astNode *programNode, astNode *funcDef)
-{
+int addFunctionToProgram(astNode *programNode, astNode *funcDef) {
     if (programNode == NULL || programNode->type != AST_PROGRAM ||
-        funcDef == NULL)
-    {
+        funcDef == NULL) {
         return -1;
     }
 
@@ -62,9 +52,9 @@ int addFunctionToProgram(astNode *programNode, astNode *funcDef)
 }
 
 astNode *createFuncDefNode(char *name, bool isMain, astFuncParam *params,
-                           size_t paramCount, astNode *body)
-{
-    if (name == NULL || body == NULL || (paramCount > 0 && params == NULL)) return NULL;
+                           size_t paramCount, astNode *body) {
+    if (name == NULL || body == NULL || (paramCount > 0 && params == NULL))
+        return NULL;
 
     astNode *node = newNode(AST_FUNC_DEF);
     node->data.funcDef.name = name;
@@ -77,31 +67,27 @@ astNode *createFuncDefNode(char *name, bool isMain, astFuncParam *params,
     return node;
 }
 
-astNode *createBlockNode(void)
-{
+astNode *createBlockNode(void) {
     astNode *node = newNode(AST_BLOCK);
     node->data.block.bufferNum = -1;
     return node;
 }
 
-int addStatementToBlock(astNode *blockNode, astNode *statement)
-{
+int addStatementToBlock(astNode *blockNode, astNode *statement) {
     if (blockNode == NULL || blockNode->type != AST_BLOCK ||
-        statement == NULL)
-    {
+        statement == NULL) {
         return -1;
     }
 
-    appendNode(&blockNode->data.block.statements,
-               &blockNode->data.block.count,
+    appendNode(&blockNode->data.block.statements, &blockNode->data.block.count,
                &blockNode->data.block.capacity, statement);
     return 0;
 }
 
 astNode *createVarDefNode(char *name, bool isConstant, varType explicitType,
-                          astNode *initializer)
-{
-    if (name == NULL || initializer == NULL) return NULL;
+                          astNode *initializer) {
+    if (name == NULL || initializer == NULL)
+        return NULL;
 
     astNode *node = newNode(AST_VAR_DEF);
     node->data.varDef.name = name;
@@ -111,9 +97,9 @@ astNode *createVarDefNode(char *name, bool isConstant, varType explicitType,
     return node;
 }
 
-astNode *createAssignNode(char *name, astNode *value)
-{
-    if (name == NULL || value == NULL) return NULL;
+astNode *createAssignNode(char *name, astNode *value) {
+    if (name == NULL || value == NULL)
+        return NULL;
 
     astNode *node = newNode(AST_ASSIGN);
     node->data.assign.name = name;
@@ -121,17 +107,16 @@ astNode *createAssignNode(char *name, astNode *value)
     return node;
 }
 
-astNode *createReturnNode(astNode *value)
-{
+astNode *createReturnNode(astNode *value) {
     astNode *node = newNode(AST_RETURN);
     node->data.returnStmt.value = value;
     return node;
 }
 
 astNode *createIfNode(astNode *condition, astNode *thenBlock,
-                      astNode *elseBlock)
-{
-    if (condition == NULL || thenBlock == NULL) return NULL;
+                      astNode *elseBlock) {
+    if (condition == NULL || thenBlock == NULL)
+        return NULL;
 
     astNode *node = newNode(AST_IF);
     node->data.ifStmt.condition = condition;
@@ -140,9 +125,9 @@ astNode *createIfNode(astNode *condition, astNode *thenBlock,
     return node;
 }
 
-astNode *createWhileNode(astNode *condition, astNode *bodyBlock)
-{
-    if (condition == NULL || bodyBlock == NULL) return NULL;
+astNode *createWhileNode(astNode *condition, astNode *bodyBlock) {
+    if (condition == NULL || bodyBlock == NULL)
+        return NULL;
 
     astNode *node = newNode(AST_WHILE);
     node->data.whileStmt.condition = condition;
@@ -151,9 +136,9 @@ astNode *createWhileNode(astNode *condition, astNode *bodyBlock)
 }
 
 astNode *createForNode(char *iteratorName, astNode *start, astNode *end,
-                       bool endInclusive, astNode *step, astNode *body)
-{
-    if (iteratorName == NULL || start == NULL || end == NULL || body == NULL) return NULL;
+                       bool endInclusive, astNode *step, astNode *body) {
+    if (iteratorName == NULL || start == NULL || end == NULL || body == NULL)
+        return NULL;
 
     astNode *node = newNode(AST_FOR);
     node->data.forStmt.iteratorName = iteratorName;
@@ -165,30 +150,27 @@ astNode *createForNode(char *iteratorName, astNode *start, astNode *end,
     return node;
 }
 
-int addGuardToFor(astNode *forNode, astNode *guard)
-{
-    if (forNode == NULL || forNode->type != AST_FOR || guard == NULL) return -1;
+int addGuardToFor(astNode *forNode, astNode *guard) {
+    if (forNode == NULL || forNode->type != AST_FOR || guard == NULL)
+        return -1;
 
-    appendNode(&forNode->data.forStmt.guards,
-               &forNode->data.forStmt.guardCount,
+    appendNode(&forNode->data.forStmt.guards, &forNode->data.forStmt.guardCount,
                &forNode->data.forStmt.guardCapacity, guard);
     return 0;
 }
 
-astNode *createFuncCallNode(char *name)
-{
-    if (name == NULL) return NULL;
+astNode *createFuncCallNode(char *name) {
+    if (name == NULL)
+        return NULL;
 
     astNode *node = newNode(AST_FUNC_CALL);
     node->data.funcCall.funcName = name;
     return node;
 }
 
-int addArgumentToCall(astNode *callNode, astNode *argument)
-{
+int addArgumentToCall(astNode *callNode, astNode *argument) {
     if (callNode == NULL || callNode->type != AST_FUNC_CALL ||
-        argument == NULL)
-    {
+        argument == NULL) {
         return -1;
     }
 
@@ -198,9 +180,9 @@ int addArgumentToCall(astNode *callNode, astNode *argument)
     return 0;
 }
 
-astNode *createBinopNode(TokenType op, astNode *left, astNode *right)
-{
-    if (left == NULL || right == NULL) return NULL;
+astNode *createBinopNode(TokenType op, astNode *left, astNode *right) {
+    if (left == NULL || right == NULL)
+        return NULL;
 
     astNode *node = newNode(AST_BINOP);
     node->data.binop.op = op;
@@ -209,9 +191,9 @@ astNode *createBinopNode(TokenType op, astNode *left, astNode *right)
     return node;
 }
 
-astNode *createUnopNode(TokenType op, astNode *operand)
-{
-    if (operand == NULL) return NULL;
+astNode *createUnopNode(TokenType op, astNode *operand) {
+    if (operand == NULL)
+        return NULL;
 
     astNode *node = newNode(AST_UNOP);
     node->data.unop.op = op;
@@ -219,34 +201,30 @@ astNode *createUnopNode(TokenType op, astNode *operand)
     return node;
 }
 
-astNode *createIdentifierNode(char *name)
-{
-    if (name == NULL) return NULL;
+astNode *createIdentifierNode(char *name) {
+    if (name == NULL)
+        return NULL;
 
     astNode *node = newNode(AST_IDENTIFIER);
     node->data.identifier.name = name;
     return node;
 }
 
-astNode *createLiteralNode(Token *token)
-{
+astNode *createLiteralNode(Token *token) {
     if (token == NULL || (token->type != TOKEN_INT_LITERAL &&
                           token->type != TOKEN_DOUBLE_LITERAL &&
                           token->type != TOKEN_STRING_LITERAL &&
-                          token->type != TOKEN_BOOL_LITERAL))
-    {
+                          token->type != TOKEN_BOOL_LITERAL)) {
         return NULL;
     }
 
     astNode *node = newNode(AST_LITERAL);
     node->data.literal.litType = token->type;
 
-    if (token->type == TOKEN_STRING_LITERAL)
-    {
+    if (token->type == TOKEN_STRING_LITERAL) {
         // The lexer owns the token, so the AST keeps its own string copy.
         size_t length = token->attribute.text.length;
-        if (token->attribute.text.data == NULL || length == SIZE_MAX)
-        {
+        if (token->attribute.text.data == NULL || length == SIZE_MAX) {
             free(node);
             return NULL;
         }
@@ -257,50 +235,41 @@ astNode *createLiteralNode(Token *token)
         text[length] = '\0';
         node->data.literal.attribute.text.data = text;
         node->data.literal.attribute.text.length = length;
-    }
-    else
-    {
+    } else {
         node->data.literal.attribute = token->attribute;
     }
     return node;
 }
 
-astNode *createUnitNode(void)
-{
+astNode *createUnitNode(void) {
     astNode *node = newNode(AST_LITERAL);
     node->resultType = UNIT;
     node->data.literal.litType = TOKEN_LPAREN;
     return node;
 }
 
-void freeAst(astNode *node)
-{
-    if (node == NULL)
-    {
+void freeAst(astNode *node) {
+    if (node == NULL) {
         return;
     }
 
-    switch (node->type)
-    {
+    switch (node->type) {
     case AST_PROGRAM:
-        for (size_t i = 0; i < node->data.program.count; i++)
-        {
+        for (size_t i = 0; i < node->data.program.count; i++) {
             freeAst(node->data.program.functions[i]);
         }
         free(node->data.program.functions);
         break;
     case AST_FUNC_DEF:
         free(node->data.funcDef.name);
-        for (size_t i = 0; i < node->data.funcDef.paramCount; i++)
-        {
+        for (size_t i = 0; i < node->data.funcDef.paramCount; i++) {
             free(node->data.funcDef.params[i].name);
         }
         free(node->data.funcDef.params);
         freeAst(node->data.funcDef.body);
         break;
     case AST_BLOCK:
-        for (size_t i = 0; i < node->data.block.count; i++)
-        {
+        for (size_t i = 0; i < node->data.block.count; i++) {
             freeAst(node->data.block.statements[i]);
         }
         free(node->data.block.statements);
@@ -330,8 +299,7 @@ void freeAst(astNode *node)
         freeAst(node->data.forStmt.start);
         freeAst(node->data.forStmt.end);
         freeAst(node->data.forStmt.step);
-        for (size_t i = 0; i < node->data.forStmt.guardCount; i++)
-        {
+        for (size_t i = 0; i < node->data.forStmt.guardCount; i++) {
             freeAst(node->data.forStmt.guards[i]);
         }
         free(node->data.forStmt.guards);
@@ -339,8 +307,7 @@ void freeAst(astNode *node)
         break;
     case AST_FUNC_CALL:
         free(node->data.funcCall.funcName);
-        for (size_t i = 0; i < node->data.funcCall.argCount; i++)
-        {
+        for (size_t i = 0; i < node->data.funcCall.argCount; i++) {
             freeAst(node->data.funcCall.arguments[i]);
         }
         free(node->data.funcCall.arguments);
@@ -353,8 +320,7 @@ void freeAst(astNode *node)
         freeAst(node->data.unop.operand);
         break;
     case AST_LITERAL:
-        if (node->data.literal.litType == TOKEN_STRING_LITERAL)
-        {
+        if (node->data.literal.litType == TOKEN_STRING_LITERAL) {
             free(node->data.literal.attribute.text.data);
         }
         break;
