@@ -49,7 +49,7 @@ typedef struct bufSectionArea {
     char data[IFJ_GENERATOR_BUF_SIZE]; /** for holding the generated text */
     uint16_t size;                     /** how much of data is used */
 
-    struct bufSectionTxt
+    struct bufSectionArea
         *cont; /** ptr to the next node (continuation of the text)*/
 } bufSectionArea;
 
@@ -58,10 +58,10 @@ typedef struct codeGenBufNode {
     bufSectionNode *firstNode;
     bufSectionNode *lastNode;
 
-    bufSectionArea *firstText;
-    bufSectionArea *lastTxt;
+    bufSectionArea *firstArea;
+    bufSectionArea *lastArea;
 
-    struct codeGenBuf *nextBuf;
+    struct codeGenBufNode *nextBuf;
 } codeGenBufNode;
 
 /** @brief an output buffer data structure (one node holds one function)*/
@@ -163,20 +163,22 @@ int codeGenFunction(codeGenState *state, astNode *funRoot);
  *
  * @return lenght of the generated output in Bytes
  *
- * the funciton outputs the output buffer to stdout and clears the buffer
+ * the funciton outputs the output buffer to stdout and clears the output buffer
  */
 int codeGenOutCode(codeGenState *state);
 
 /**
  * @brief discards the generated code in the output buffer
  */
-int codeGenDiscard(codeGenState *state);
+void codeGenDiscard(codeGenState *state);
 
 /*
  * --------------------
  *  INTERNAL FUNCTIONS
  * --------------------
  */
+
+void codeGenDestructBuf(codeGenBufNode *buf);
 
 #endif
 
