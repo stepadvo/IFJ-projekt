@@ -46,7 +46,7 @@ typedef enum {
  * @return Pointer to the new lexer context, or NULL if allocation fails
  *         or input is NULL.
  */
-Lexer *lexer_create(FILE *input);
+Lexer *lexerCreate(FILE *input);
 
 /**
  * @brief Reads and returns the next token from the input stream.
@@ -54,7 +54,7 @@ Lexer *lexer_create(FILE *input);
  * Before the first call, initialize the output structure, for example with
  * Token token = {0}. On subsequent calls using the same structure, its
  * previous contents are released first. The output structure owns any text
- * attribute and keeps it valid until token_free() is called or this
+ * attribute and keeps it valid until tokenFree() is called or this
  * function is called again with the same pointer.
  *
  * Identifiers and string literals carry text attributes. Integer, double,
@@ -63,7 +63,7 @@ Lexer *lexer_create(FILE *input);
  *
  * Each non-empty logical line ends with TOKEN_NEWLINE. TOKEN_NEWLINE is
  * not emitted inside parentheses; a physical line break there can be
- * reported through newline_before. Indentation is returned as the number
+ * reported through newlineBefore. Indentation is returned as the number
  * of spaces in indent on the first actual token of a logical line.
  *
  * This function never terminates the program. Errors are reported to
@@ -73,16 +73,16 @@ Lexer *lexer_create(FILE *input);
  * After a recoverable lexical error, the caller may request another token.
  * After an internal error, the caller must clean up and stop reading.
  *
- * @param lexer Context created by lexer_create().
- * @param out_token Output token, initialized to zero or containing a token
+ * @param lexer Context created by lexerCreate().
+ * @param outToken Output token, initialized to zero or containing a token
  *                  previously returned by this function. Any previous text
  *                  attribute is released before the new token is stored.
  * @return LEXER_OK when a token is returned, including TOKEN_EOF;
  *         LEXER_ERROR for a lexical error; or LEXER_INTERNAL_ERROR for an
- *         internal error or input read error. On error, out_token is set
+ *         internal error or input read error. On error, outToken is set
  *         to TOKEN_INVALID.
  */
-LexerStatus get_token(Lexer *lexer, Token *out_token);
+LexerStatus getToken(Lexer *lexer, Token *outToken);
 
 /**
  * @brief Releases the lexer context.
@@ -92,6 +92,6 @@ LexerStatus get_token(Lexer *lexer, Token *out_token);
  *
  * @param lexer Lexer context; NULL is allowed.
  */
-void lexer_destroy(Lexer *lexer);
+void lexerDestroy(Lexer *lexer);
 
 #endif
