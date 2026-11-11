@@ -12,54 +12,43 @@
 // #define IFJ_GENERATOR_DEBUG
 
 #define IFJ_GENERATOR_BUF_SIZE 4096 /** the size of a single buffer */
-#define IFJ_GENERATOR_BUF_METADATA_SIZE 32
+#define IFJ_GENERATOR_BUF_METADATA_SIZE 64
 
 #include "ast.h"
 
 #include <stdio.h>
 
-typedef enum { BUFF_LIT, BUFF_REF } buffType;
-
-/** structure for holding the metadata of a code section*/
-typedef struct bufSection {
-    buffType type; /** whether the section is a text or a reference to another
-                      buffer*/
-    union {
-        struct {
-            char *text; /** a ptr into a bufSectionTxtData, where the generated
-                           text starts */
-            uint16_t textLen; /** lenght of this text (until either the end of
-                                 block or insertion of another block) */
-        };
-        struct codeGenBufNode
-            *childBuff; /** ptr to a buffer holding the generated child block*/
-    };
-} bufSection;
+/** structure for holding info about where other buffers are to be inserted */
+typedef struct bufInsert {
+    uint16_t textPos;
+    struct codeGenBufNode
+        *childBuff; /** ptr to a buffer holding the generated child block*/
+} bufInsert;
 
 /** node holding the metadata for the generated text */
-typedef struct bufSectionNode {
-    bufSection data[IFJ_GENERATOR_BUF_METADATA_SIZE];
+typedef struct bufInsertNode {
+    bufInsert data[IFJ_GENERATOR_BUF_METADATA_SIZE];
     uint8_t size; /** how much of data is used */
 
-    struct bufSectionNode *cont; /** ptr to the next node, (continuation)*/
-} bufSectionNode;
+    struct bufInsertNode *next; /** ptr to the next node */
+} bufInsertNode;
 
 /** node holding one area for generated code */
-typedef struct bufSectionArea {
+typedef struct bufSection {
     char data[IFJ_GENERATOR_BUF_SIZE]; /** for holding the generated text */
-    uint16_t size;                     /** how much of data is used */
+    uint16_t size;                     /** how much of the data is used */
 
-    struct bufSectionArea
-        *cont; /** ptr to the next node (continuation of the text)*/
-} bufSectionArea;
+    struct bufSection
+        *next; /** ptr to the next node (continuation of the text)*/
+} bufSection;
 
 /** @brief buffer for keeping the generated code blocks */
 typedef struct codeGenBufNode {
-    bufSectionNode *firstNode;
-    bufSectionNode *lastNode;
+    bufInsertNode *firstNode;
+    bufInsertNode *lastNode;
 
-    bufSectionArea *firstArea;
-    bufSectionArea *lastArea;
+    bufSection *firstSection;
+    bufSection *lastSection;
 
     struct codeGenBufNode *nextBuf;
 } codeGenBufNode;
@@ -178,7 +167,37 @@ void codeGenDiscard(codeGenState *state);
  * --------------------
  */
 
+codeGenBufNode *codeGenCreateBuf();
+
 void codeGenDestructBuf(codeGenBufNode *buf);
+
+int codeGenStatementArr(astNode **nodes, size_t count, codeGenBufNode *buffer);
+
+int codeGenStatement(astNode *node, codeGenBufNode *buffer);
+
+int codeGenStmtVarDef(astNode *varDef, codeGenBufNode *buffer);
+
+int codeGenStmtAssign(astNode *assign, codeGenBufNode *buffer);
+
+int codeGenStmtIf(astNode *ifStmt, codeGenBufNode *buffer);
+
+int codeGenStmtWhile(astNode *whileLoop, codeGenBufNode *buffer);
+
+int codeGenStmtFor(astNode *forLoop, codeGenBufNode *buffer);
+
+int codeGenStmtFuncCall(astNode *funcCall, codeGenBufNode *buffer);
+
+int codeGenStmtReturn(astNode *ret, codeGenBufNode *buffer);
+
+int codeGenStmtBinOp(astNode *binOp, codeGenBufNode *buffer);
+
+int codeGenStmtUnOp(astNode *unOp, codeGenBufNode *buffer);
+
+int codeGenStmtLiteral(astNode *lit, codeGenBufNode *buffer);
+
+int codeGenStmtIdentif(astNode *identif, codeGenBufNode *buffer);
+
+int codeGenStmtBlock(astNode *block, codeGenBufNode *buffer);
 
 #endif
 
