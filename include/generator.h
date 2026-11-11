@@ -6,13 +6,16 @@
  * detailed description
  */
 
-#ifndef IFJ_GENERATOR_H
-#define IFJ_GENERATOR_H
+#ifndef IFJ_GEN_H
+#define IFJ_GEN_H
 
-// #define IFJ_GENERATOR_DEBUG
+// #define IFJ_GEN_DEBUG
 
-#define IFJ_GENERATOR_BUF_SIZE 4096 /** the size of a single buffer */
-#define IFJ_GENERATOR_BUF_METADATA_SIZE 64
+#define IFJ_GEN_BUF_SIZE 4096 /** the size of a single buffer */
+#define IFJ_GEN_BUF_INSERT_NUM 64
+#define IFJ_GEN_MAX_ID_LEN                                                     \
+    256 /** the maximum size of an identifier (whether in IFJ26 or             \
+           IFJcode26)*/
 
 #include "ast.h"
 
@@ -25,21 +28,21 @@ typedef struct bufInsert {
         *childBuff; /** ptr to a buffer holding the generated child block*/
 } bufInsert;
 
-/** node holding the metadata for the generated text */
+/** node holding references to other buffers */
 typedef struct bufInsertNode {
-    bufInsert data[IFJ_GENERATOR_BUF_METADATA_SIZE];
+    bufInsert data[IFJ_GEN_BUF_INSERT_NUM];
     uint8_t size; /** how much of data is used */
 
     struct bufInsertNode *next; /** ptr to the next node */
 } bufInsertNode;
 
-/** node holding one area for generated code */
+/** node holding one 4kiB sectioin of text for generated code */
 typedef struct bufSection {
-    char data[IFJ_GENERATOR_BUF_SIZE]; /** for holding the generated text */
-    uint16_t size;                     /** how much of the data is used */
+    char data[IFJ_GEN_BUF_SIZE]; /** for holding the generated text */
+    uint16_t size; /** how much of the data is used (the section doesn't need to
+                      be full for the next section to exist) */
 
-    struct bufSection
-        *next; /** ptr to the next node (continuation of the text)*/
+    struct bufSection *next; /** ptr to the next node */
 } bufSection;
 
 /** @brief buffer for keeping the generated code blocks */
@@ -49,6 +52,8 @@ typedef struct codeGenBufNode {
 
     bufSection *firstSection;
     bufSection *lastSection;
+    int totalSize; /** redundant data. Useful for getting the total size faster
+                    */
 
     struct codeGenBufNode *nextBuf;
 } codeGenBufNode;
@@ -112,11 +117,11 @@ void codeGenDestruct(codeGenState *state);
  *
  * the function reads the symbol table but doesn't modify it in any way
  *
- * when IFJ_GENERATOR_DEBUG is defined the function will check if these
+ * when IFJ_GEN_DEBUG is defined the function will check if these
  * conditions are met and print out a debugging message to stderr otherwise the
  * function will assume that they are met
  *
- * if IJF_GENERATOR_DEBUG is not defined and the conditions aren't met, it will
+ * if IJF_GEN_DEBUG is not defined and the conditions aren't met, it will
  * result in undefined behaviour
  */
 int codeGenBlock(codeGenState *state, astNode *blockRoot);
@@ -138,11 +143,11 @@ int codeGenBlock(codeGenState *state, astNode *blockRoot);
  *
  * the function reads the symbol table but doesn't modify it in any way
  *
- * when IFJ_GENERATOR_DEBUG is defined the function will check if these
+ * when IFJ_GEN_DEBUG is defined the function will check if these
  * conditions are met and print out a debugging message to stderr otherwise the
  * function will assume that they are met
  *
- * if IJF_GENERATOR_DEBUG is not defined and the conditions aren't met, it will
+ * if IJF_GEN_DEBUG is not defined and the conditions aren't met, it will
  * result in undefined behaviour
  */
 int codeGenFunction(codeGenState *state, astNode *funRoot);
@@ -167,9 +172,44 @@ void codeGenDiscard(codeGenState *state);
  * --------------------
  */
 
+/**
+ * @brief creates a new buffer for keeping text
+ *
+ * @return ptr to the created buffer of NULL on memory allocatino err
+ *
+ * the buffer will have one bufSectoin and one bufInsertNode allocated
+ */
 codeGenBufNode *codeGenCreateBuf();
 
+/**
+ * @brief destroys a buffer
+ */
 void codeGenDestructBuf(codeGenBufNode *buf);
+
+/**
+ * @brief inserts the text into the buffer
+ *
+ * @param txt non NULL ptr to the text
+ * @param buffer a non NULL ptr to the buffer with at least one bufSection and
+ * one bufInsertNode
+ *
+ * @return 0 on success, -1 on memory allocation err
+ */
+int codeGenInsertTxt(const char *txt, codeGenBufNode *buffer);
+
+/**
+ * @brief inserts a reference to insertedBuf at the current position in destBuf
+ *
+ * @param destBuf a non NULL ptr to the buffer with at least one bufSection and
+ * one bufInsertNode, where the reference is to be inserted
+ * @param insertedBuf a non NULL ptr to the buffer, that is to be inserted
+ *
+ * @return 0 on success, -1 on memeory allocation err
+ *
+ * the reference will represent, that at this positon in the text, the whole
+ * text of insertedBuf is supposed to be inserted
+ */
+int codeGenInsertBufToTxt(codeGenBufNode *destBuf, codeGenBufNode *insertedBuf);
 
 int codeGenStatementArr(astNode **nodes, size_t count, codeGenBufNode *buffer);
 
@@ -195,9 +235,24 @@ int codeGenStmtUnOp(astNode *unOp, codeGenBufNode *buffer);
 
 int codeGenStmtLiteral(astNode *lit, codeGenBufNode *buffer);
 
+int codeGenStmtStringLit(const char *str, size_t lenght,
+                         codeGenBufNode *buffer);
+
 int codeGenStmtIdentif(astNode *identif, codeGenBufNode *buffer);
 
 int codeGenStmtBlock(astNode *block, codeGenBufNode *buffer);
+
+/**
+ * @brief gets the name of a variable in the assembler
+ *
+ * @param id the name in IFJ26 to be translated
+ *
+ * @return ptr to the name in IFJcode26
+ *
+ * the resulting string being longer, than the size of dst, will result in
+ * undefined behaviour
+ */
+const char *codeGenGetVarName(const char *id);
 
 #endif
 
