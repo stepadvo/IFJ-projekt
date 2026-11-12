@@ -18,8 +18,7 @@
            IFJcode26)*/
 
 #include "ast.h"
-
-#include <stdio.h>
+#include <stdbool.h>
 
 /** structure for holding info about where other buffers are to be inserted */
 typedef struct bufInsert {
@@ -230,10 +229,12 @@ int codeGenStatementArr(astNode **nodes, size_t count, codeGenBufNode *buffer);
  *
  * @param node a non NULL ptr to the node
  * @param buffer a non NULL ptr to the buffer
+ * @param leaveVal whether the resulting value should be left on stack (if false
+ * then statements only evaluating a value will be ignored)
  *
  * @return 0 on success, -1 on failure (memory allocation err if not debugging)
  */
-int codeGenStatement(astNode *node, codeGenBufNode *buffer);
+int codeGenStatement(astNode *node, codeGenBufNode *buffer, bool leaveVal);
 
 /**
  * @brief generates a variable definition to buffer
@@ -290,10 +291,13 @@ int codeGenStmtFor(astNode *forLoop, codeGenBufNode *buffer);
  *
  * @param funcCall a non NULL ptr to the ast node
  * @param buffer a non NULL ptr to the buffer
+ * @param leaveVal whether the returned value should be left on stack (if the
+ * result of called function is used)
  *
  * @return 0 on success, -1 on failure (memory allocation err if not debugging)
  */
-int codeGenStmtFuncCall(astNode *funcCall, codeGenBufNode *buffer);
+int codeGenStmtFuncCall(astNode *funcCall, codeGenBufNode *buffer,
+                        bool leaveVal);
 
 /**
  * @brief generates a return statement to buffer (if retval is not Unit, leaves
