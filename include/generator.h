@@ -14,7 +14,7 @@
 #define IFJ_GEN_BUF_SIZE 4096 /** the size of a single buffer */
 #define IFJ_GEN_BUF_INSERT_NUM 64
 #define IFJ_GEN_MAX_ID_LEN                                                     \
-    256 /** the maximum size of an identifier (whether in IFJ26 or             \
+    1024 /** the maximum size of an identifier (whether in IFJ26 or            \
            IFJcode26)*/
 
 #include "ast.h"
@@ -54,6 +54,9 @@ typedef struct codeGenBufNode {
     bufSection *lastSection;
     int totalSize; /** redundant data. Useful for getting the total size faster
                     */
+    int labelNum;  /** the number given to a statement needing labels so the
+                      label names are identical (works if one buffer is analogous
+                      to one source code block) */
 
     struct codeGenBufNode *nextBuf;
 } codeGenBufNode;
@@ -211,48 +214,192 @@ int codeGenInsertTxt(const char *txt, codeGenBufNode *buffer);
  */
 int codeGenInsertBufToTxt(codeGenBufNode *destBuf, codeGenBufNode *insertedBuf);
 
+/**
+ * @brief generates an array of statements (nodes of ast) to a buffer
+ *
+ * @param nodes an array of ptrs to nodes with minimal size of count
+ * @param number of nodes generated
+ * @param buffer a non NULL ptr to the buffer
+ *
+ * @return 0 on success, -1 on failure (memory allocation err if not debugging)
+ */
 int codeGenStatementArr(astNode **nodes, size_t count, codeGenBufNode *buffer);
 
+/**
+ * @brief generates one node of the ast to buffer
+ *
+ * @param node a non NULL ptr to the node
+ * @param buffer a non NULL ptr to the buffer
+ *
+ * @return 0 on success, -1 on failure (memory allocation err if not debugging)
+ */
 int codeGenStatement(astNode *node, codeGenBufNode *buffer);
 
+/**
+ * @brief generates a variable definition to buffer
+ *
+ * @param varDef a non NULL ptr to the ast node
+ * @param buffer a non NULL ptr to the buffer
+ *
+ * @return 0 on success, -1 on failure (memory allocation err if not debugging)
+ */
 int codeGenStmtVarDef(astNode *varDef, codeGenBufNode *buffer);
 
+/**
+ * @brief generates a assignment to buffer
+ *
+ * @param assign a non NULL ptr to the ast node
+ * @param buffer a non NULL ptr to the buffer
+ *
+ * @return 0 on success, -1 on failure (memory allocation err if not debugging)
+ */
 int codeGenStmtAssign(astNode *assign, codeGenBufNode *buffer);
 
+/**
+ * @brief generates an if statement to buffer
+ *
+ * @param ifStmt a non NULL ptr to the ast node
+ * @param buffer a non NULL ptr to the buffer
+ *
+ * @return 0 on success, -1 on failure (memory allocation err if not debugging)
+ */
 int codeGenStmtIf(astNode *ifStmt, codeGenBufNode *buffer);
 
+/**
+ * @brief generates a while loop to buffer
+ *
+ * @param whileLoop a non NULL ptr to the ast node
+ * @param buffer a non NULL ptr to the buffer
+ *
+ * @return 0 on success, -1 on failure (memory allocation err if not debugging)
+ */
 int codeGenStmtWhile(astNode *whileLoop, codeGenBufNode *buffer);
 
+/**
+ * @brief generates a for loop to buffer
+ *
+ * @param forLoop a non NULL ptr to the ast node
+ * @param buffer a non NULL ptr to the buffer
+ *
+ * @return 0 on success, -1 on failure (memory allocation err if not debugging)
+ */
 int codeGenStmtFor(astNode *forLoop, codeGenBufNode *buffer);
 
+/**
+ * @brief generates a function call to buffer
+ *
+ * @param funcCall a non NULL ptr to the ast node
+ * @param buffer a non NULL ptr to the buffer
+ *
+ * @return 0 on success, -1 on failure (memory allocation err if not debugging)
+ */
 int codeGenStmtFuncCall(astNode *funcCall, codeGenBufNode *buffer);
 
+/**
+ * @brief generates a return statement to buffer (if retval is not Unit, leaves
+ * the return value on stack)
+ *
+ * @param ret a non NULL ptr to the ast node
+ * @param buffer a non NULL ptr to the buffer
+ *
+ * @return 0 on success, -1 on failure (memory allocation err if not debugging)
+ */
 int codeGenStmtReturn(astNode *ret, codeGenBufNode *buffer);
 
+/**
+ * @brief generates a binary operation to buffer (leaves the result on stack)
+ *
+ * @param binOp a non NULL ptr to the ast node
+ * @param buffer a non NULL ptr to the buffer
+ *
+ * @return 0 on success, -1 on failure (memory allocation err if not debugging)
+ */
 int codeGenStmtBinOp(astNode *binOp, codeGenBufNode *buffer);
 
+/**
+ * @brief generates a unary operation to buffer (leaves the result on stack)
+ *
+ * @param unOp a non NULL ptr to the ast node
+ * @param buffer a non NULL ptr to the buffer
+ *
+ * @return 0 on success, -1 on failure (memory allocation err if not debugging)
+ */
 int codeGenStmtUnOp(astNode *unOp, codeGenBufNode *buffer);
 
+/**
+ * @brief generates a literal to buffer (leaves the value on stack)
+ *
+ * @param lit a non NULL ptr to the ast node
+ * @param buffer a non NULL ptr to the buffer
+ *
+ * @return 0 on success, -1 on failure (memory allocation err if not debugging)
+ */
 int codeGenStmtLiteral(astNode *lit, codeGenBufNode *buffer);
 
+/**
+ * @brief generates a string literal to the buffer (leaves the string literal on
+ * stack)
+ *
+ * @param str a non NULL ptr to the normal string with at least lenght + 1
+ * characters
+ * @param lenght the lenght of the string
+ * @param buffer a non NULL ptr to the buffer
+ *
+ * @return 0 on success, -1 on failure (memory allocation err if not debugging)
+ */
 int codeGenStmtStringLit(const char *str, size_t lenght,
                          codeGenBufNode *buffer);
 
+/**
+ * @brief generates a value from identifier to buffer (leaves the value of the
+ * variable on stack)
+ *
+ * @param identif a non NULL ptr to the ast node
+ * @param buffer a non NULL ptr to the buffer
+ *
+ * @return 0 on success, -1 on failure (memory allocation err if not debugging)
+ */
 int codeGenStmtIdentif(astNode *identif, codeGenBufNode *buffer);
 
+/**
+ * @brief adds a reference to another buffer (block)
+ *
+ * @param block a non NULL ptr to the ast node
+ * @param buffer a non NULL ptr to the buffer
+ *
+ * @return 0 on success, -1 on failure (memory allocation err if not debugging)
+ */
 int codeGenStmtBlock(astNode *block, codeGenBufNode *buffer);
 
 /**
- * @brief gets the name of a variable in the assembler
+ * @brief assembles the name of a variable in IFJcode26
  *
  * @param id the name in IFJ26 to be translated
  *
  * @return ptr to the name in IFJcode26
  *
- * the resulting string being longer, than the size of dst, will result in
- * undefined behaviour
+ * the function returns ptr to a local static array. The name is valid only
+ * until the next call of the function
+ *
+ * local variables follow the naming convention:
+ *  LF@< name in IFJ26 >$< blockDepth >
  */
 const char *codeGenGetVarName(const char *id);
+
+/**
+ * @brief assembles a unique label name
+ *
+ * @param buffer non NULL ptr to the buffer the label will be placed into
+ *
+ * @return ptr ot the label id
+ *
+ * the function returns ptr to a local static array. The id is valid only until
+ * the next call of the function
+ *
+ * label ids follow the naming convention:
+ *  < function name >$< blockDepth >$< unique number in buffer (block) >
+ */
+const char *codeGenGetLabelId(codeGenBufNode *buffer);
 
 #endif
 

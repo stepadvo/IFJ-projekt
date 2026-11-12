@@ -2,8 +2,6 @@
  * @file generator.c
  * @brief implementation of IFJcode26 generator
  * @author Štěpán Dvořák, xdvoras00@stud.fit.vutbr.cz
- *
- * detailed description
  */
 
 #include "generator.h"
@@ -29,7 +27,7 @@
                     buf);                                                      \
             return retFail;                                                    \
         }                                                                      \
-        (void)0;
+        (void)0
 
     #define GEN_CHECK(cond, retFail)                                           \
         if (!(cond))                                                           \
@@ -39,11 +37,11 @@
     #define GEN_CHECK(cond, retFail) (void)0
 #endif
 
-#define INSERT_AND_RETURN(txt, buffer)                                         \
-    if (codeGenInsertTxt(txt, buffer) != 0) {                                  \
-        return -1;                                                             \
+#define IFJ_GEN_TRY(fun, retFail)                                              \
+    if (fun != 0) {                                                            \
+        return retFail;                                                        \
     }                                                                          \
-    return 0
+    (void)0
 
 codeGenState *codeGenInit() {
     static codeGenState state = {NULL, NULL, NULL, NULL};
@@ -75,10 +73,9 @@ int codeGenBlock(codeGenState *state, astNode *blockRoot) {
     }
 
     // generate all the statements in the block into the created buffer
-    if (codeGenStatementArr(blockRoot->data.block.statements,
-                            blockRoot->data.block.count, buffer) != 0) {
-        return -1;
-    }
+    IFJ_GEN_TRY(codeGenStatementArr(blockRoot->data.block.statements,
+                                    blockRoot->data.block.count, buffer),
+                -1);
 
     // set the ptr to the created generated buffer in ast
     blockRoot->data.block.bufferPtr = (void *)buffer;
@@ -86,6 +83,7 @@ int codeGenBlock(codeGenState *state, astNode *blockRoot) {
 }
 
 int codeGenFunction(codeGenState *state, astNode *funRoot) {
+    // TODO
     (void)state;
     (void)funRoot;
     return 0;
@@ -147,6 +145,7 @@ codeGenBufNode *codeGenCreateBuf() {
     tempBufP->nextBuf = NULL;
 
     tempBufP->totalSize = 0;
+    tempBufP->labelNum = 0;
 
     return tempBufP;
 
@@ -240,91 +239,177 @@ int codeGenInsertBufToTxt(codeGenBufNode *destBuf,
 
 int codeGenStatementArr(astNode **nodes, size_t count, codeGenBufNode *buffer) {
     for (size_t i = 0; i < count; i++) {
-        if (codeGenStatement(nodes[i], buffer) != 0) {
-            return -1;
-        }
+        IFJ_GEN_TRY(codeGenStatement(nodes[i], buffer), -1);
     }
     return 0;
 }
 
 int codeGenStatement(astNode *node, codeGenBufNode *buffer) {
+    // determine the type of node and call appropriate function
     switch (node->type) {
     case AST_VAR_DEF:
-        codeGenStmtVarDef(node, buffer);
+        IFJ_GEN_TRY(codeGenStmtVarDef(node, buffer), -1);
         break;
 
     case AST_ASSIGN:
-        codeGenStmtAssign(node, buffer);
+        IFJ_GEN_TRY(codeGenStmtAssign(node, buffer), -1);
         break;
 
     case AST_IF:
-        codeGenStmtIf(node, buffer);
+        IFJ_GEN_TRY(codeGenStmtIf(node, buffer), -1);
         break;
 
     case AST_WHILE:
-        codeGenStmtWhile(node, buffer);
+        IFJ_GEN_TRY(codeGenStmtWhile(node, buffer), -1);
         break;
 
     case AST_FOR:
-        codeGenStmtFor(node, buffer);
+        IFJ_GEN_TRY(codeGenStmtFor(node, buffer), -1);
         break;
 
     case AST_FUNC_CALL:
-        codeGenStmtFuncCall(node, buffer);
+        IFJ_GEN_TRY(codeGenStmtFuncCall(node, buffer), -1);
         break;
 
     case AST_RETURN:
-        codeGenStmtReturn(node, buffer);
+        IFJ_GEN_TRY(codeGenStmtReturn(node, buffer), -1);
         break;
 
     case AST_BINOP:
-        codeGenStmtBinOp(node, buffer);
+        IFJ_GEN_TRY(codeGenStmtBinOp(node, buffer), -1);
         break;
 
     case AST_UNOP:
-        codeGenStmtUnOp(node, buffer);
+        IFJ_GEN_TRY(codeGenStmtUnOp(node, buffer), -1);
         break;
 
     case AST_LITERAL:
-        codeGenStmtLiteral(node, buffer);
+        IFJ_GEN_TRY(codeGenStmtLiteral(node, buffer), -1);
         break;
 
     case AST_IDENTIFIER:
-        codeGenStmtIdentif(node, buffer);
+        IFJ_GEN_TRY(codeGenStmtIdentif(node, buffer), -1);
         break;
 
     case AST_BLOCK:
-        codeGenStmtBlock(node, buffer);
+        IFJ_GEN_TRY(codeGenStmtBlock(node, buffer), -1);
         break;
 
     default:
         GEN_CHECK_PRINT(false, -1,
-                        "Unsupported ast node in tree (PROGRAMM or FUNC_DEF)");
+                        "Unsupported ast node in tree (PROGRAMM or FUNC_DEF "
+                        "inside a function)");
     }
     return 0;
 }
 
 int codeGenStmtVarDef(astNode *varDef, codeGenBufNode *buffer) {
-    (void)varDef;
-    (void)buffer;
+    // get the name in IFJcode26
+    const char *name = codeGenGetVarName(varDef->data.varDef.name);
+    GEN_CHECK(name != NULL, -1);
+
+    size_t overheadLen = strlen("DEFVAR \nPOPS \n");
+    // set the buffer lenght
+    char buf[2 * strlen(name) + overheadLen + 1];
+
+    sprintf(buf, "DEFVAR %s\nPOPS %s\n", name, name);
+    // release hold of the name buffer and generate RHS (the initializing value
+    // should be left on stack)
+
+    IFJ_GEN_TRY(codeGenStatement(varDef->data.varDef.initializer, buffer), -1);
+    IFJ_GEN_TRY(codeGenInsertTxt(buf, buffer), -1);
     return 0;
 }
 
 int codeGenStmtAssign(astNode *assign, codeGenBufNode *buffer) {
-    (void)assign;
-    (void)buffer;
+    // get the name in IFJcode26
+    const char *name = codeGenGetVarName(assign->data.assign.name);
+    GEN_CHECK(name != NULL, -1);
+
+    size_t overheadLen = strlen("POPS \n");
+    // set the buffer lenght
+    char buf[strlen(name) + overheadLen + 1];
+
+    sprintf(buf, "DEFVAR %s\nPOPS %s\n", name, name);
+    // release hold of the name buffer and generate RHS (the initializing value
+    // should be left on stack)
+
+    IFJ_GEN_TRY(codeGenStatement(assign->data.assign.value, buffer), -1);
+    IFJ_GEN_TRY(codeGenInsertTxt(buf, buffer), -1);
     return 0;
 }
 
 int codeGenStmtIf(astNode *ifStmt, codeGenBufNode *buffer) {
-    (void)ifStmt;
-    (void)buffer;
+    // get a unique label id
+    const char *labelId = codeGenGetLabelId(buffer);
+    GEN_CHECK(labelId != NULL, -1);
+    size_t labelLen = strlen(labelId);
+
+    // generate the header
+    size_t headerLen = strlen("PUSHS bool@true\nJUMPIFNEQS _ELSE\n");
+    char headerBuf[labelLen + headerLen + 1];
+    sprintf(headerBuf, "PUSHS bool@true\nJUMPIFNEQS %s_ELSE\n", labelId);
+
+    // generate the middle
+    size_t middleLen = strlen("JUMP _END\nLABEL _ELSE\n");
+    char middleBuf[labelLen + middleLen + 1];
+    sprintf(middleBuf, "JUMP %s_END\nLABEL _ELSE\n", labelId);
+
+    // generate the footer
+    size_t footerLen = strlen("LABEL _END\n");
+    char footerBuf[labelLen + footerLen + 1];
+    sprintf(footerBuf, "LABEL %s_END\n", labelId);
+    // now can release the hold of labelId and generate the subblocks
+
+    // the condition leaves result on stack
+    IFJ_GEN_TRY(codeGenStatement(ifStmt->data.ifStmt.condition, buffer), -1);
+    IFJ_GEN_TRY(codeGenInsertTxt(headerBuf, buffer), -1);
+
+    // then block
+    IFJ_GEN_TRY(codeGenStatement(ifStmt->data.ifStmt.thenBlock, buffer), -1);
+    IFJ_GEN_TRY(codeGenInsertTxt(middleBuf, buffer), -1);
+
+    // else block
+    IFJ_GEN_TRY(codeGenStatement(ifStmt->data.ifStmt.elseBlock, buffer), -1);
+    IFJ_GEN_TRY(codeGenInsertTxt(footerBuf, buffer), -1);
+
     return 0;
 }
 
 int codeGenStmtWhile(astNode *whileLoop, codeGenBufNode *buffer) {
-    (void)whileLoop;
-    (void)buffer;
+    // get a unique label id
+    const char *labelId = codeGenGetLabelId(buffer);
+    GEN_CHECK(labelId != NULL, -1);
+    size_t labelLen = strlen(labelId);
+
+    // generate the header
+    size_t headerLen = strlen("LABEL _START\n");
+    char headerBuf[labelLen + headerLen + 1];
+    sprintf(headerBuf, "LABEL %s_START\n", labelId);
+
+    // generate the condition check
+    size_t condCheckLen = strlen("PUSHS bool@true\nJUMPIFNEQS _END\n");
+    char condCheckBuf[labelLen + condCheckLen + 1];
+    sprintf(condCheckBuf, "PUSHS bool@true\nJUMPIFNEQS %s_END\n", labelId);
+
+    // generate the footer
+    size_t footerLen = strlen("JUMP _START\nLABEL _END\n");
+    char footerBuf[2 * labelLen + footerLen + 1];
+    sprintf(footerBuf, "JUMP %s_START\nLABEL %s_END\n", labelId, labelId);
+    // now can release the hold of labelId and generate the subblocks
+
+    IFJ_GEN_TRY(codeGenInsertTxt(headerBuf, buffer), -1);
+
+    // the condition leaves result on stack
+    IFJ_GEN_TRY(codeGenStatement(whileLoop->data.whileStmt.condition, buffer),
+                -1);
+    IFJ_GEN_TRY(codeGenInsertTxt(condCheckBuf, buffer), -1);
+
+    // body of the loop
+    IFJ_GEN_TRY(codeGenStatement(whileLoop->data.whileStmt.bodyBlock, buffer),
+                -1);
+    IFJ_GEN_TRY(codeGenInsertTxt(footerBuf, buffer), -1);
+
     return 0;
 }
 
@@ -341,8 +426,13 @@ int codeGenStmtFuncCall(astNode *funcCall, codeGenBufNode *buffer) {
 }
 
 int codeGenStmtReturn(astNode *ret, codeGenBufNode *buffer) {
-    // just generate the RHS, it will leave its result on the stack
-    codeGenStatement(ret->data.returnStmt.value, buffer);
+    // just generate the RHS if the ptr to it isn't NULL, it will leave its
+    // result on the stack
+    if (ret->data.returnStmt.value) {
+        codeGenStatement(ret->data.returnStmt.value, buffer);
+    }
+    codeGenInsertTxt("RETURN\n", buffer);
+
     return 0;
 }
 
@@ -388,18 +478,20 @@ int codeGenStmtLiteral(astNode *lit, codeGenBufNode *buffer) {
             "A literal at %p doesn't have the litType set as a literal", lit);
     }
 
-    INSERT_AND_RETURN(buf, buffer);
+    IFJ_GEN_TRY(codeGenInsertTxt(buf, buffer), -1);
+    return 0;
 }
 
 int codeGenStmtStringLit(const char *str, size_t lenght,
                          codeGenBufNode *buffer) {
     // each character can be replaced with at most 4 characters of escape
     // sequence + lenght of the prefix
-    size_t prefixLen = 7;
+    char prefix[] = "string@";
+    size_t prefixLen = strlen(prefix);
     char buf[lenght * 4 + prefixLen + 1];
 
     // insert the prefix
-    strcpy(buf, "string@");
+    strcpy(buf, prefix);
     size_t bufIdx = prefixLen;
 
     for (size_t i = 0; i < lenght; i++) {
@@ -423,7 +515,8 @@ int codeGenStmtStringLit(const char *str, size_t lenght,
         }
     }
 
-    INSERT_AND_RETURN(buf, buffer);
+    IFJ_GEN_TRY(codeGenInsertTxt(buf, buffer), -1);
+    return 0;
 }
 
 int codeGenStmtIdentif(astNode *identif, codeGenBufNode *buffer) {
@@ -432,10 +525,12 @@ int codeGenStmtIdentif(astNode *identif, codeGenBufNode *buffer) {
     GEN_CHECK(name != NULL, -1);
 
     // assemble the final string and insert to buffer
-    char buf[IFJ_GEN_MAX_ID_LEN + 7];
+    size_t prefixLen = strlen("PUSHS \n");
+    char buf[prefixLen + IFJ_GEN_MAX_ID_LEN + 1];
     sprintf(buf, "PUSHS %s\n", name);
 
-    INSERT_AND_RETURN(buf, buffer);
+    IFJ_GEN_TRY(codeGenInsertTxt(buf, buffer), -1);
+    return 0;
 }
 
 int codeGenStmtBlock(astNode *block, codeGenBufNode *buffer) {
@@ -444,14 +539,13 @@ int codeGenStmtBlock(astNode *block, codeGenBufNode *buffer) {
                     "A child block at %p wasn't generated yet", block);
 
     // insert a reference to the child block
-    if (codeGenInsertBufToTxt(buffer, block->data.block.bufferPtr) != 0) {
-        return -1;
-    }
+    IFJ_GEN_TRY(codeGenInsertBufToTxt(buffer, block->data.block.bufferPtr), -1);
     return 0;
 }
 
 const char *codeGenGetVarName(const char *id) {
     static char nameBuf[IFJ_GEN_MAX_ID_LEN];
+
     // find the name in symTable
     varData nameData = symTableFindVar(id);
     GEN_CHECK_PRINT(nameData.id != NULL, NULL,
@@ -460,6 +554,21 @@ const char *codeGenGetVarName(const char *id) {
     // construct the name in IFJ26
     sprintf(nameBuf, "LF@%s$%i", id, nameData.blockDepth);
     return nameBuf;
+}
+
+const char *codeGenGetLabelId(codeGenBufNode *buffer) {
+    static char idBuf[IFJ_GEN_MAX_ID_LEN];
+
+    // find the function name and block depth in symTable (should be the active
+    // function)
+    const char *funName = symTableGetActive().id;
+    GEN_CHECK_PRINT(funName != NULL, NULL, "No function is active\n");
+    int blockDepth = symTableBlockDepth();
+
+    int inBlockUnique = buffer->labelNum++;
+
+    sprintf(idBuf, "%s$%i$%i", funName, blockDepth, inBlockUnique);
+    return idBuf;
 }
 
 /*
