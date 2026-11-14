@@ -56,6 +56,7 @@ typedef struct codeGenBufNode {
     int labelNum;  /** the number given to a statement needing labels so the
                       label names are identical (works if one buffer is analogous
                       to one source code block) */
+    const int bufNum; /** number of the buffer */
 
     struct codeGenBufNode *nextBuf;
 } codeGenBufNode;
@@ -73,9 +74,14 @@ typedef struct {
     codeGenBufNode *firstBuf;
     codeGenBufNode *lastBuf;
 
+    int bufsCreated;
+
     /** a linked list of output buffers for all the functions */
     outBufNode *firstFun;
     outBufNode *lastFun;
+
+    char mainFunName[IFJ_GEN_MAX_ID_LEN]; /** ptr to the name of the main
+                                             function in the ast */
 } codeGenState;
 
 /*
@@ -181,7 +187,7 @@ void codeGenDiscard(codeGenState *state);
  *
  * the buffer will have one bufSectoin and one bufInsertNode allocated
  */
-codeGenBufNode *codeGenCreateBuf();
+codeGenBufNode *codeGenCreateBuf(codeGenState *state);
 
 /**
  * @brief destroys a buffer
@@ -386,9 +392,9 @@ int codeGenStmtBlock(astNode *block, codeGenBufNode *buffer);
  * until the next call of the function
  *
  * local variables follow the naming convention:
- *  LF@< name in IFJ26 >$< blockDepth >
+ *  LF@< name in IFJ26 >$< blockDepth >$< number of buffer (block) >
  */
-const char *codeGenGetVarName(const char *id);
+const char *codeGenGetVarName(const char *id, codeGenBufNode *buffer);
 
 /**
  * @brief assembles a unique label name
