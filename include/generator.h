@@ -137,13 +137,14 @@ int codeGenBlock(codeGenState *state, astNode *blockRoot);
 /**
  * @brief a function for generating a function
  *
- * @param funRoot ptr to the node with .type=AST_FUNC_DEF, that roots the block
+ * @param funRoot ptr to the node with .type=AST_FUNC_DEF, that roots the
+ * function tree
  *
  * @return 0 on success, 1 if state or funRoot are NULL, -1 on memory allocation
  * err
  *
- * the function will generate the function overhead in IFJcode26 and append it
- * to a output buffer
+ * the buffers holding blocks belonging to the generated function will be
+ * destroyed
  *
  * the function works only if these conditions are met:
  *  - the body block of the function has to be generated
@@ -192,7 +193,7 @@ codeGenBufNode *codeGenCreateBuf(codeGenState *state);
 /**
  * @brief destroys a buffer
  */
-void codeGenDestructBuf(codeGenBufNode *buf);
+void codeGenDestructBuf(codeGenBufNode *buffer);
 
 /**
  * @brief inserts the text into the buffer
@@ -204,6 +205,12 @@ void codeGenDestructBuf(codeGenBufNode *buf);
  * @return 0 on success, -1 on memory allocation err
  */
 int codeGenInsertTxt(const char *txt, codeGenBufNode *buffer);
+
+/**
+ * @brief returns the lenght of the buffer (both the total lenght and the lenght
+ * of inserted buffers)
+ */
+int codeGenBufLenght(codeGenBufNode *buffer);
 
 /**
  * @brief inserts a reference to insertedBuf at the current position in destBuf
@@ -218,6 +225,17 @@ int codeGenInsertTxt(const char *txt, codeGenBufNode *buffer);
  * text of insertedBuf is supposed to be inserted
  */
 int codeGenInsertBufToTxt(codeGenBufNode *destBuf, codeGenBufNode *insertedBuf);
+
+/**
+ * @brief outputs the contents of the buffer (including buffers inserted in its
+ * middle)
+ *
+ * @param outBuf output string, where the data is to be saved
+ * @param buffer the buffer, that should be outputted in a plain string
+ *
+ * @return the number of outputted bytes
+ */
+int codeGenOutputBuf(char *outBuf, codeGenBufNode *buffer);
 
 /**
  * @brief generates an array of statements (nodes of ast) to a buffer

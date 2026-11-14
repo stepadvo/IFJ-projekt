@@ -88,9 +88,79 @@ int codeGenBlock(codeGenState *state, astNode *blockRoot) {
 }
 
 int codeGenFunction(codeGenState *state, astNode *funRoot) {
-    // TODO
-    (void)state;
-    (void)funRoot;
+    if (!funRoot) {
+        return 1;
+    }
+
+    // if the function is main, copy its name
+    if (funRoot->data.funcDef.isMain) {
+        strcpy(state->mainFunName, funRoot->data.funcDef.name);
+    }
+
+    codeGenBufNode *bodyBuffer =
+        (codeGenBufNode *)(funRoot->data.funcDef.body->data.block.bufferPtr);
+
+    const char header[] = "LABEL %s\n"
+                          "CREATEFRAME\n"
+                          "PUSHFRAME\n";
+    const char singleParam[] = "DEFVAR %s$0\n"
+                               "POPS %s$0\n";
+    const char footer[] = "LABEL %s_return\n"
+                          "POPFRAME\n"
+                          "RETURN\n";
+
+    // first get the size of the allocated chunk of memory
+    // get the size of the function overhead
+    size_t totalLen = 0;
+    totalLen += strlen(header) + strlen(footer) - 2 * 2 +
+                2 * strlen(funRoot->data.funcDef.name);
+    for (size_t i = 0; i < funRoot->data.funcDef.paramCount; i++) {
+        totalLen += strlen(singleParam) - 2 * 2 +
+                    strlen(funRoot->data.funcDef.params[i].name);
+    }
+    // get the size of the body
+    totalLen += codeGenBufLenght(bodyBuffer);
+
+    // allocate a chunk of memory for the whole function and its output buffer
+    outBufNode *outBuf = malloc(sizeof(outBufNode));
+
+    if (!outBuf) {
+        setErrCode(99);
+        return -1;
+    }
+
+    char *outBufData = malloc(totalLen + 1);
+
+    if (!outBufData) {
+        setErrCode(99);
+        free(outBuf);
+        return -1;
+    }
+    outBuf->buf = outBufData;
+    outBuf->bufSize = totalLen;
+
+    int pos = 0; // for keeping the position in the outBufData
+    // generate the function header
+    pos += sprintf(&outBufData[pos], header, funRoot->data.funcDef.name);
+
+    // generate the parameter creation
+    for (size_t i = 0; i < funRoot->data.funcDef.paramCount; i++) {
+        const char *paramName = funRoot->data.funcDef.params[i].name;
+        pos += sprintf(&outBufData[pos], singleParam, paramName, paramName);
+    }
+
+    // insert the body
+    pos += codeGenOutputBuf(&outBufData[pos], bodyBuffer);
+
+    // generate the footer
+    pos += sprintf(&outBufData[pos], footer, funRoot->data.funcDef.name);
+
+    // insert the outBuf into the state
+    if (state->lastFun) {
+        state->lastFun->nextBuf = outBuf;
+    }
+    state->lastFun = outBuf;
+
     return 0;
 }
 
@@ -174,26 +244,43 @@ err_node:
     return NULL;
 }
 
-void codeGenDestructBuf(codeGenBufNode *buf) {
-    if (!buf) {
+void codeGenDestructBuf(codeGenBufNode *buffer) {
+    if (!buffer) {
         return;
     }
     // free all the metadata
     bufInsertNode *nextNode;
-    for (bufInsertNode *curr = buf->firstNode; curr != NULL; curr = nextNode) {
+    for (bufInsertNode *curr = buffer->firstNode; curr != NULL;
+         curr = nextNode) {
         nextNode = curr->next;
         free(curr);
     }
 
     // free all the text areas
     bufSection *nextSection;
-    for (bufSection *curr = buf->firstSection; curr != NULL;
+    for (bufSection *curr = buffer->firstSection; curr != NULL;
          curr = nextSection) {
         nextSection = curr->next;
         free(curr);
     }
 
-    free(buf);
+    free(buffer);
+}
+
+int codeGenBufLenght(codeGenBufNode *buffer) {
+    // add the size of the text in this buffer
+    int len = buffer->totalSize;
+
+    // add lenghts of all the inserted buffers
+    bufInsertNode *node = buffer->firstNode;
+    while (node) {
+        for (int i = 0; i < node->size; i++) {
+            len += codeGenBufLenght(node->data[i].childBuff);
+        }
+        node = node->next;
+    }
+
+    return len;
 }
 
 int codeGenInsertTxt(const char *txt, codeGenBufNode *buffer) {
@@ -251,8 +338,68 @@ int codeGenInsertBufToTxt(codeGenBufNode *destBuf,
     // insert the new reference to the first viable position
     potentialDest->data[potentialDest->size++] =
         (bufInsert){.childBuff = insertedBuf, .textPos = destBuf->totalSize};
+    // update the buffer size
 
     return 0;
+}
+
+int codeGenOutputBuf(char *outBuf, codeGenBufNode *buffer) {
+    int len = 0;
+
+    // add lenghts of all the inserted buffers
+    bufInsertNode *node = buffer->firstNode;
+    bufSection *section = buffer->firstSection;
+    int posInSection = 0;
+
+    while (node) {
+        for (int i = 0; i < node->size; i++) {
+            bufInsert nextInsert = node->data[i];
+            // the nextInsert.textPos will be acting a the number of characters,
+            // that are left to be copied from now on
+
+            // copy the text preceeding each inserted buffer
+            // copy the first section if it can be all copied before the next
+            // insert
+            if (section->size - posInSection < nextInsert.textPos) {
+                memcpy(&outBuf[len], &section->data[posInSection],
+                       section->size - posInSection);
+                len += section->size - posInSection;
+                nextInsert.textPos -= (section->size - posInSection);
+
+                section = section->next;
+            }
+            // copy all the sections, that can be copied whole
+            while (section->size < nextInsert.textPos) {
+                memcpy(&outBuf[len], section->data, section->size);
+                len += section->size;
+                nextInsert.textPos -= section->size;
+
+                section = section->next;
+            }
+            // copy the rest from the section bigger, than what is left to be
+            // copied
+            memcpy(&outBuf[len], &section->data[posInSection],
+                   nextInsert.textPos);
+            len += nextInsert.textPos;
+            posInSection = posInSection + nextInsert.textPos;
+
+            // copy the inserted buffer
+            len += codeGenOutputBuf(&outBuf[len], buffer);
+        }
+        node = node->next;
+    }
+
+    // copy what is left after the last inserted buffer
+    while (section) {
+        memcpy(&outBuf[len], section->data, section->size);
+        len += section->size;
+        section = section->next;
+    }
+
+    // make sure the string ends in \0 but don't include it in the lenght
+    // (otherwise it will not be overwritten in the next insert)
+    outBuf[len] = '\0';
+    return len;
 }
 
 int codeGenStatementArr(astNode **nodes, size_t count, codeGenBufNode *buffer) {
@@ -606,7 +753,7 @@ int codeGenStmtReturn(astNode *ret, codeGenBufNode *buffer) {
 
     // jump to the end of the function for return
     const char *funName = symTableGetActive().id;
-    const char out[] = "JUMP %s$return\n";
+    const char out[] = "JUMP %s_return\n";
 
     size_t outLen = strlen(out) + strlen(funName);
     char outBuf[outLen + 1];
@@ -763,6 +910,8 @@ const char *codeGenGetVarName(const char *id, codeGenBufNode *buffer) {
 }
 
 const char *codeGenGetLabelId(codeGenBufNode *buffer) {
+    // TODO remake after the symbol table is updated, so the variable names are
+    // translated into numbers
     static char idBuf[IFJ_GEN_MAX_ID_LEN];
 
     // find the function name and block depth in symTable (should be the active
