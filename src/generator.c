@@ -97,6 +97,7 @@ int codeGenFunction(codeGenState *state, astNode *funRoot) {
 int codeGenOutCode(codeGenState *state) {
     // output the file header
     int len = printf(".IFJcode26\n"
+                     "DEFVAR GF@void"
                      "CALL %s\n"
                      "EXIT int@0\n",
                      state->mainFunName);
@@ -570,9 +571,29 @@ int codeGenStmtFor(astNode *forLoop, codeGenBufNode *buffer) {
 
 int codeGenStmtFuncCall(astNode *funcCall, codeGenBufNode *buffer,
                         bool leaveVal) {
-    (void)funcCall;
-    (void)buffer;
-    (void)leaveVal;
+    // generate the statements from last to first (they leave their value on the
+    // stack)
+    for (size_t i = funcCall->data.funcCall.argCount; i != 0; i--) {
+        IFJ_GEN_TRY(codeGenStatement(funcCall->data.funcCall.arguments[i - 1],
+                                     buffer, true),
+                    -1);
+    }
+
+    // generate the function call
+    const char call[] = "CALL %s\n";
+    size_t callLen = strlen(call) + strlen(funcCall->data.funcCall.funcName);
+    char callBuf[callLen + 1];
+    sprintf(callBuf, call, funcCall->data.funcCall.funcName);
+
+    IFJ_GEN_TRY(codeGenInsertTxt(callBuf, buffer), -1);
+
+    // if no result should be left on stack and the function will return one,
+    // pop it
+    varType retType = symTableFindFun(funcCall->data.funcCall.funcName).retType;
+    if (!leaveVal && retType != UNIT) {
+        IFJ_GEN_TRY(codeGenInsertTxt("POPS GF@void\n", buffer), -1);
+    }
+
     return 0;
 }
 
