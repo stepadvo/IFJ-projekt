@@ -604,9 +604,9 @@ int codeGenStmtReturn(astNode *ret, codeGenBufNode *buffer) {
         codeGenStatement(ret->data.returnStmt.value, buffer, true);
     }
 
+    // jump to the end of the function for return
     const char *funName = symTableGetActive().id;
-    const char out[] = "POPS retval$-1\n"
-                       "JUMP %s$return\n";
+    const char out[] = "JUMP %s$return\n";
 
     size_t outLen = strlen(out) + strlen(funName);
     char outBuf[outLen + 1];
@@ -616,14 +616,40 @@ int codeGenStmtReturn(astNode *ret, codeGenBufNode *buffer) {
 }
 
 int codeGenStmtBinOp(astNode *binOp, codeGenBufNode *buffer) {
+    // TODO - after figuring out how we differentiate between regural division
+    // and int division and the differentiating between + and concatenation
     (void)binOp;
     (void)buffer;
     return 0;
 }
 
 int codeGenStmtUnOp(astNode *unOp, codeGenBufNode *buffer) {
-    (void)unOp;
-    (void)buffer;
+    // if the operator is unary - then we also need a prefix
+    if (unOp->data.unop.op == TOKEN_MINUS) {
+        IFJ_GEN_TRY(codeGenInsertTxt("PUSHS int@0\n", buffer), -1);
+    }
+
+    // generate the operand and leave its value on stack
+    IFJ_GEN_TRY(codeGenStatement(unOp->data.unop.operand, buffer, true), -1);
+
+    // generate the operator suffix
+    switch (unOp->data.unop.op) {
+    case TOKEN_NOT:
+        IFJ_GEN_TRY(codeGenInsertTxt("NOTS\n", buffer), -1);
+        break;
+    case TOKEN_PLUS:
+        // no further instructions needed
+        break;
+    case TOKEN_MINUS:
+        IFJ_GEN_TRY(codeGenInsertTxt("SUBS\n", buffer), -1);
+        break;
+    default:
+        GEN_CHECK_PRINT(false, -1,
+                        "Node set as %i inside an unary operator node. "
+                        "Possible unary operators are NOT, PLUS, MINUS",
+                        unOp->data.unop.op);
+    }
+
     return 0;
 }
 
