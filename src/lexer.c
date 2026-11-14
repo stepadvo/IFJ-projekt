@@ -383,6 +383,10 @@ static LexerStatus lexerReadNumber(Lexer *lexer, int firstCharacter,
         goto failure;
     }
 
+    if (!isDouble && buffer[0] == '0' && length > 1) {
+        goto lexicalError;
+    }
+
     status = lexerPeekChar(lexer, &character);
     if (status != LEXER_OK) {
         goto failure;
@@ -498,8 +502,7 @@ static LexerStatus lexerReadNumber(Lexer *lexer, int firstCharacter,
         attribute.doubleValue = value;
     } else {
         long long value = strtoll(buffer, &end, 10);
-        if (*end != '\0' || errno == ERANGE || value > INT64_MAX ||
-            (buffer[0] == '0' && value != 0)) {
+        if (*end != '\0' || errno == ERANGE || value > INT64_MAX) {
             goto lexicalError;
         }
 
