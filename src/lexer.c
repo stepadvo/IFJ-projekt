@@ -383,6 +383,10 @@ static LexerStatus lexerReadNumber(Lexer *lexer, int firstCharacter,
         goto failure;
     }
 
+    if (!isDouble && buffer[0] == '0' && length > 1) {
+        goto lexicalError;
+    }
+
     status = lexerPeekChar(lexer, &character);
     if (status != LEXER_OK) {
         goto failure;
@@ -498,8 +502,7 @@ static LexerStatus lexerReadNumber(Lexer *lexer, int firstCharacter,
         attribute.doubleValue = value;
     } else {
         long long value = strtoll(buffer, &end, 10);
-        if (*end != '\0' || errno == ERANGE || value > INT64_MAX ||
-            (buffer[0] == '0' && value != 0)) {
+        if (*end != '\0' || errno == ERANGE || value > INT64_MAX) {
             goto lexicalError;
         }
 
@@ -610,6 +613,202 @@ static LexerStatus lexerSkipBlockComment(Lexer *lexer,
     return LEXER_OK;
 }
 
+/** @brief Appends a character to owned string text. */
+static LexerStatus lexerAppendStringChar(Lexer *lexer, char **buffer,
+                                         size_t *length, size_t *capacity,
+                                         int character) {
+    if (*length == *capacity - 1) {
+        if (*capacity > SIZE_MAX / 2) {
+            goto allocationError;
+        }
+
+        size_t newCapacity = *capacity * 2;
+        char *newBuffer = realloc(*buffer, newCapacity);
+        if (newBuffer == NULL) {
+            goto allocationError;
+        }
+
+        *buffer = newBuffer;
+        *capacity = newCapacity;
+    }
+
+    (*buffer)[(*length)++] = (char)character;
+    (*buffer)[*length] = '\0';
+    return LEXER_OK;
+
+allocationError:
+    setErrCode(LEXER_INTERNAL_ERROR);
+    fprintf(stderr,
+            "Internal lexer error at %zu:%zu: "
+            "string buffer allocation failed.\n",
+            lexer->line, lexer->column);
+    return LEXER_INTERNAL_ERROR;
+}
+
+/**
+ * @brief Reads a string after its first opening quote was consumed.
+ * @param outToken Receives owned text only on success; keeps its start
+ * position.
+ */
+static LexerStatus lexerReadString(Lexer *lexer, Token *outToken) {
+    size_t length = 0;
+    size_t capacity = 32;
+    char *buffer = malloc(capacity);
+    if (buffer == NULL) {
+        setErrCode(LEXER_INTERNAL_ERROR);
+        fprintf(stderr,
+                "Internal lexer error at %zu:%zu: "
+                "string buffer allocation failed.\n",
+                outToken->line, outToken->column);
+        return LEXER_INTERNAL_ERROR;
+    }
+    buffer[0] = '\0';
+
+    bool isMultiline = false;
+    size_t quoteCount = 0;
+    const char *errorMessage = "unterminated string literal";
+    int character;
+    LexerStatus status = lexerPeekChar(lexer, &character);
+    if (status != LEXER_OK) {
+        goto failure;
+    }
+
+    if (character == '"') {
+        status = lexerReadChar(lexer, &character);
+        if (status != LEXER_OK) {
+            goto failure;
+        }
+
+        status = lexerPeekChar(lexer, &character);
+        if (status != LEXER_OK) {
+            goto failure;
+        }
+
+        if (character != '"') {
+            /* Two quotes form an empty ordinary string. */
+            goto success;
+        }
+
+        status = lexerReadChar(lexer, &character);
+        if (status != LEXER_OK) {
+            goto failure;
+        }
+        isMultiline = true;
+        errorMessage = "unterminated multiline string literal";
+    }
+
+    while (true) {
+        status = lexerPeekChar(lexer, &character);
+        if (status != LEXER_OK) {
+            goto failure;
+        }
+
+        if (character == EOF) {
+            goto lexicalError;
+        }
+
+        if (!isMultiline && character == '\n') {
+            errorMessage = "newline in an ordinary string literal";
+            goto lexicalError;
+        }
+
+        status = lexerReadChar(lexer, &character);
+        if (status != LEXER_OK) {
+            goto failure;
+        }
+
+        if (isMultiline) {
+            if (character == '"') {
+                quoteCount++;
+                if (quoteCount == 3) {
+                    goto success;
+                }
+                continue;
+            }
+
+            while (quoteCount > 0) {
+                status = lexerAppendStringChar(lexer, &buffer, &length,
+                                               &capacity, '"');
+                if (status != LEXER_OK) {
+                    goto failure;
+                }
+                quoteCount--;
+            }
+
+            if (character == '\n') {
+                /* LF is inside the token, not between actual tokens. */
+                lexer->physicalIndent = 0;
+                lexer->atPhysicalLineStart = false;
+                lexer->physicalLineHasToken = true;
+                lexer->leadingTabColumn = 0;
+            }
+        } else {
+            if (character == '"') {
+                goto success;
+            }
+
+            if (character == '\\') {
+                status = lexerPeekChar(lexer, &character);
+                if (status != LEXER_OK) {
+                    goto failure;
+                }
+
+                if (character == EOF) {
+                    goto lexicalError;
+                }
+                if (character == '\n') {
+                    errorMessage = "newline in an ordinary string literal";
+                    goto lexicalError;
+                }
+
+                status = lexerReadChar(lexer, &character);
+                if (status != LEXER_OK) {
+                    goto failure;
+                }
+
+                switch (character) {
+                case '\\':
+                case '"':
+                    break;
+                case 'n':
+                    character = '\n';
+                    break;
+                case 'r':
+                    character = '\r';
+                    break;
+                case 't':
+                    character = '\t';
+                    break;
+                default:
+                    errorMessage = "invalid escape sequence in string literal";
+                    goto lexicalError;
+                }
+            }
+        }
+
+        status = lexerAppendStringChar(lexer, &buffer, &length, &capacity,
+                                       character);
+        if (status != LEXER_OK) {
+            goto failure;
+        }
+    }
+
+success:
+    outToken->attribute.text.data = buffer;
+    outToken->attribute.text.length = length;
+    return LEXER_OK;
+
+lexicalError:
+    status = LEXER_ERROR;
+    setErrCode(LEXER_ERROR);
+    fprintf(stderr, "Lexical error at %zu:%zu: %s.\n", outToken->line,
+            outToken->column, errorMessage);
+
+failure:
+    free(buffer);
+    return status;
+}
+
 /**
  * @brief Allocates and initializes a lexer context.
  *
@@ -660,8 +859,7 @@ Lexer *lexerCreate(FILE *input) {
  * @param outToken Initialized output token.
  * @return LEXER_OK when a token is returned;
  *         LEXER_ERROR on a lexical error;
- *         LEXER_INTERNAL_ERROR on an internal failure or input
- *         not supported by the current implementation.
+ *         LEXER_INTERNAL_ERROR on an internal or input read failure.
  */
 LexerStatus getToken(Lexer *lexer, Token *outToken) {
     tokenFree(outToken);
@@ -804,6 +1002,7 @@ LexerStatus getToken(Lexer *lexer, Token *outToken) {
         break;
     }
 
+    size_t tokenIndent = lexer->physicalIndent;
     TokenType type;
 
     /*
@@ -1018,6 +1217,15 @@ LexerStatus getToken(Lexer *lexer, Token *outToken) {
         break;
     }
 
+    case '"': {
+        status = lexerReadString(lexer, outToken);
+        if (status != LEXER_OK) {
+            return status;
+        }
+        type = TOKEN_STRING_LITERAL;
+        break;
+    }
+
     case '@': {
         type = TOKEN_AT;
         break;
@@ -1059,23 +1267,18 @@ LexerStatus getToken(Lexer *lexer, Token *outToken) {
 
             break;
         }
-        /* TODO: Implement recognition of the remaining tokens. */
-        setErrCode(LEXER_INTERNAL_ERROR);
-
-        fprintf(stderr,
-                "Internal lexer error at %zu:%zu: "
-                "token recognition is not implemented for byte 0x%02X.\n",
+        setErrCode(LEXER_ERROR);
+        fprintf(stderr, "Lexical error at %zu:%zu: unexpected byte 0x%02X.\n",
                 outToken->line, outToken->column, (unsigned int)character);
-
-        return LEXER_INTERNAL_ERROR;
+        return LEXER_ERROR;
     }
 
     outToken->type = type;
     outToken->startsLogicalLine = !lexer->lineHasToken;
 
     if (outToken->startsLogicalLine) {
-        outToken->indent = lexer->physicalIndent;
-        lexer->logicalIndent = lexer->physicalIndent;
+        outToken->indent = tokenIndent;
+        lexer->logicalIndent = tokenIndent;
     }
 
     outToken->newlineBefore = lexer->newlineSinceToken;
