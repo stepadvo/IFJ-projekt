@@ -3,12 +3,13 @@
  * @brief Recursive-descent parser for the currently supported IFJ26 syntax.
  * @author Jiří Dohnal, xdohnaj00@stud.fit.vutbr.cz
  *
- * Parses the mandatory prolog and basic single-line function definitions.
- * Indented blocks and complete expressions will be added later.
+ * Parses the mandatory prolog, function headers, and single-line expressions.
+ * Indented blocks and function calls will be added later.
  */
 
 #include "parser.h"
 #include "compiler.h"
+#include "expression.h"
 #include "lexer.h"
 #include "token.h"
 #include <stdio.h>
@@ -254,6 +255,222 @@ static bool parseParameters(astFuncParam **params, size_t *count) {
 }
 
 /**
+ * @brief Checks if a symbol is a binary operator.
+ * @param symbol Expression symbol.
+ * @return True for binary operators.
+ */
+static bool isBinarySymbol(ExprSymbol symbol) {
+    return symbol == EXPR_OR || symbol == EXPR_AND || symbol == EXPR_EQUALITY ||
+           symbol == EXPR_COMPARISON || symbol == EXPR_ADD ||
+           symbol == EXPR_MULTIPLY;
+}
+
+/**
+ * @brief Finds the table symbol for the current token.
+ * @param expectsOperand True when the next token should start a value.
+ * @param openParens Number of unmatched '(' on the stack.
+ * @return Symbol for the precedence table.
+ */
+static ExprSymbol expressionInputSymbol(bool expectsOperand,
+                                        size_t openParens) {
+    /** these tokens end the expression only outside parentheses */
+    if (openParens == 0) {
+        switch (currentToken.type) {
+        case TOKEN_COMMA:
+        case TOKEN_RPAREN:
+        case TOKEN_SEMICOLON:
+        case TOKEN_KW_THEN:
+        case TOKEN_KW_DO:
+            return EXPR_END;
+        default:
+            break;
+        }
+    }
+
+    return exprSymbolFromToken(currentToken.type, expectsOperand);
+}
+
+/**
+ * @brief Creates an AST node for the current value.
+ * @return Value node, or NULL if the token is not a value.
+ */
+static astNode *expressionValueNode(void) {
+    if (currentToken.type == TOKEN_IDENTIFIER) {
+        return createIdentifierNode(copyName());
+    }
+    return createLiteralNode(&currentToken);
+}
+
+/**
+ * @brief Reduces the last value or operation to E.
+ * @param stack Expression stack.
+ * @return True if a valid part was reduced.
+ */
+static bool reduceExpression(ExprStack *stack) {
+    size_t count = stack->count;
+    if (count == 0) {
+        return false;
+    }
+
+    ExprStackItem *last = &stack->items[count - 1];
+
+    /** value -> E; the AST node is already there */
+    if (last->symbol == EXPR_VALUE) {
+        last->symbol = EXPR_NONTERMINAL;
+        return true;
+    }
+
+    if (last->symbol != EXPR_NONTERMINAL || count < 2) {
+        return false;
+    }
+
+    ExprStackItem *op = &stack->items[count - 2];
+
+    /** unary E -> E */
+    if (op->symbol == EXPR_UNARY) {
+        astNode *node = createUnopNode(op->tokenType, last->node);
+        if (node == NULL) {
+            return false;
+        }
+        last->node = NULL;
+        stack->count -= 2;
+        exprStackPush(
+            stack, (ExprStackItem){.symbol = EXPR_NONTERMINAL, .node = node});
+        return true;
+    }
+
+    /** E operator E -> E */
+    if (count < 3 || !isBinarySymbol(op->symbol) ||
+        stack->items[count - 3].symbol != EXPR_NONTERMINAL) {
+        return false;
+    }
+
+    ExprStackItem *left = &stack->items[count - 3];
+    astNode *node = createBinopNode(op->tokenType, left->node, last->node);
+    if (node == NULL) {
+        return false;
+    }
+    left->node = NULL;
+    last->node = NULL;
+    stack->count -= 3;
+    exprStackPush(stack,
+                  (ExprStackItem){.symbol = EXPR_NONTERMINAL, .node = node});
+    return true;
+}
+
+/**
+ * @brief Removes matching parentheses from the stack.
+ * @param stack Expression stack.
+ * @return True if the parentheses are valid.
+ */
+static bool reduceParentheses(ExprStack *stack) {
+    size_t count = stack->count;
+    if (count == 0) {
+        return false;
+    }
+
+    /** () is the Unit value */
+    if (stack->items[count - 1].symbol == EXPR_LPAREN) {
+        stack->count--;
+        exprStackPush(stack, (ExprStackItem){.symbol = EXPR_NONTERMINAL,
+                                             .node = createUnitNode()});
+        return true;
+    }
+
+    /** ( E ) -> E */
+    if (count < 2 || stack->items[count - 1].symbol != EXPR_NONTERMINAL ||
+        stack->items[count - 2].symbol != EXPR_LPAREN) {
+        return false;
+    }
+
+    astNode *node = stack->items[count - 1].node;
+    stack->items[count - 1].node = NULL;
+    stack->count -= 2;
+    exprStackPush(stack,
+                  (ExprStackItem){.symbol = EXPR_NONTERMINAL, .node = node});
+    return true;
+}
+
+/**
+ * @brief Parses an expression using the precedence table.
+ * @return Expression AST, or NULL on error.
+ *
+ * Stops before the token after the expression.
+ */
+static astNode *parseExpression(void) {
+    ExprStack stack;
+    exprStackInit(&stack);
+    exprStackPush(&stack, (ExprStackItem){.symbol = EXPR_END});
+
+    size_t openParens = 0;
+    bool expectsOperand = true;
+
+    while (true) {
+        ExprSymbol input = expressionInputSymbol(expectsOperand, openParens);
+        const ExprStackItem *terminal = exprStackTopTerminal(&stack);
+        if (terminal == NULL || input == EXPR_INVALID) {
+            syntaxError("invalid expression");
+            break;
+        }
+
+        PrecRelation action = exprPrecedence(terminal->symbol, input);
+
+        if (action == PREC_SHIFT) {
+            ExprStackItem item = {.symbol = input,
+                                  .tokenType = currentToken.type};
+            if (input == EXPR_VALUE) {
+                item.node = expressionValueNode();
+                if (item.node == NULL) {
+                    syntaxError("expected value");
+                    break;
+                }
+            }
+            exprStackPush(&stack, item);
+
+            if (input == EXPR_LPAREN) {
+                openParens++;
+            }
+            expectsOperand = input != EXPR_VALUE;
+            if (!advance()) {
+                break;
+            }
+        } else if (action == PREC_REDUCE) {
+            if (!reduceExpression(&stack)) {
+                syntaxError("invalid expression");
+                break;
+            }
+        } else if (action == PREC_MATCH) {
+            if (!reduceParentheses(&stack)) {
+                syntaxError("invalid parentheses");
+                break;
+            }
+            openParens--;
+            expectsOperand = false;
+            if (!advance()) {
+                break;
+            }
+        } else if (action == PREC_ACCEPT) {
+            /** only $ E is a complete expression */
+            if (stack.count != 2 || stack.items[1].symbol != EXPR_NONTERMINAL) {
+                syntaxError("expected expression");
+                break;
+            }
+
+            astNode *result = stack.items[1].node;
+            stack.items[1].node = NULL;
+            exprStackDestroy(&stack);
+            return result;
+        } else {
+            syntaxError("invalid expression");
+            break;
+        }
+    }
+
+    exprStackDestroy(&stack);
+    return NULL;
+}
+
+/**
  * @brief Parses a function and creates its AST node.
  * @param isMain True if the function has @main.
  * @return Function node, or NULL on error.
@@ -297,30 +514,9 @@ static astNode *parseFunctionDef(bool isMain) {
         return NULL;
     }
 
-    /** only simple bodies for now */
-    astNode *body = NULL;
-    if (currentToken.type == TOKEN_INT_LITERAL ||
-        currentToken.type == TOKEN_DOUBLE_LITERAL ||
-        currentToken.type == TOKEN_STRING_LITERAL ||
-        currentToken.type == TOKEN_BOOL_LITERAL) {
-        body = createLiteralNode(&currentToken);
-        if (!advance()) {
-            freeAst(body);
-            freeParameters(params, paramCount);
-            free(name);
-            return NULL;
-        }
-        /** () = Unit */
-    } else if (currentToken.type == TOKEN_LPAREN) {
-        if (!advance() || !match(TOKEN_RPAREN, "expected ')' for Unit value")) {
-            freeParameters(params, paramCount);
-            free(name);
-            return NULL;
-        }
-        body = createUnitNode();
-
-    } else {
-        syntaxError("expected simple expression (blocks not supported yet)");
+    /** function body = expression */
+    astNode *body = parseExpression();
+    if (body == NULL) {
         freeParameters(params, paramCount);
         free(name);
         return NULL;
