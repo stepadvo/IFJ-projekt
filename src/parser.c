@@ -251,7 +251,86 @@ static bool parseParameters(astFuncParam **params, size_t *count) {
         if (!advance()) {
             return false;
         }
+        /** trailing comma needs a line break */
+        if (currentToken.type == TOKEN_RPAREN) {
+            if (currentToken.newlineBefore) {
+                return true;
+            }
+            syntaxError("expected parameter after ','");
+            return false;
+        }
     }
+}
+
+/** @brief Parses an expression. @return Expression AST, or NULL on error. */
+static astNode *parseExpression(void);
+
+/**
+ * @brief Parses a function call after its name.
+ * @param name Function name, owned by the new node.
+ * @return Call AST, or NULL on error.
+ */
+static astNode *parseFunctionCall(char *name) {
+    astNode *call = createFuncCallNode(name);
+    if (call == NULL) {
+        free(name);
+        return NULL;
+    }
+
+    if (!match(TOKEN_LPAREN, "expected '(' after function name")) {
+        freeAst(call);
+        return NULL;
+    }
+
+    /** read each argument as an expression */
+    while (currentToken.type != TOKEN_RPAREN) {
+        astNode *argument = parseExpression();
+        if (argument == NULL) {
+            freeAst(call);
+            return NULL;
+        }
+        if (addArgumentToCall(call, argument) != 0) {
+            freeAst(argument);
+            freeAst(call);
+            return NULL;
+        }
+
+        if (currentToken.type != TOKEN_COMMA) {
+            break;
+        }
+        if (!advance()) {
+            freeAst(call);
+            return NULL;
+        }
+        /** a trailing comma needs a line break */
+        if (currentToken.type == TOKEN_RPAREN && !currentToken.newlineBefore) {
+            syntaxError("expected argument after ','");
+            freeAst(call);
+            return NULL;
+        }
+    }
+
+    if (!match(TOKEN_RPAREN, "expected ')' after arguments")) {
+        freeAst(call);
+        return NULL;
+    }
+    return call;
+}
+
+/**
+ * @brief Creates a variable or call node from a saved name.
+ * @param name Name to give to the AST.
+ * @return Value AST, or NULL on error.
+ */
+static astNode *parseIdentifierValue(char *name) {
+    if (currentToken.type == TOKEN_LPAREN) {
+        return parseFunctionCall(name);
+    }
+    astNode *node = createIdentifierNode(name);
+    if (node == NULL) {
+        free(name);
+    }
+    return node;
 }
 
 /**
@@ -260,9 +339,9 @@ static bool parseParameters(astFuncParam **params, size_t *count) {
  * @return True for binary operators.
  */
 static bool isBinarySymbol(ExprSymbol symbol) {
-    return symbol == EXPR_OR || symbol == EXPR_AND || symbol == EXPR_EQUALITY ||
-           symbol == EXPR_COMPARISON || symbol == EXPR_ADD ||
-           symbol == EXPR_MULTIPLY;
+    return symbol == EXPR_OR || symbol == EXPR_AND ||
+           symbol == EXPR_EQUALITY || symbol == EXPR_COMPARISON ||
+           symbol == EXPR_ADD || symbol == EXPR_MULTIPLY;
 }
 
 /**
@@ -271,8 +350,7 @@ static bool isBinarySymbol(ExprSymbol symbol) {
  * @param openParens Number of unmatched '(' on the stack.
  * @return Symbol for the precedence table.
  */
-static ExprSymbol expressionInputSymbol(bool expectsOperand,
-                                        size_t openParens) {
+static ExprSymbol expressionInputSymbol(bool expectsOperand, size_t openParens) {
     /** these tokens end the expression only outside parentheses */
     if (openParens == 0) {
         switch (currentToken.type) {
@@ -296,9 +374,20 @@ static ExprSymbol expressionInputSymbol(bool expectsOperand,
  */
 static astNode *expressionValueNode(void) {
     if (currentToken.type == TOKEN_IDENTIFIER) {
-        return createIdentifierNode(copyName());
+        char *name = copyName();
+        if (!advance()) {
+            free(name);
+            return NULL;
+        }
+        return parseIdentifierValue(name);
     }
-    return createLiteralNode(&currentToken);
+
+    astNode *node = createLiteralNode(&currentToken);
+    if (node != NULL && !advance()) {
+        freeAst(node);
+        return NULL;
+    }
+    return node;
 }
 
 /**
@@ -334,8 +423,8 @@ static bool reduceExpression(ExprStack *stack) {
         }
         last->node = NULL;
         stack->count -= 2;
-        exprStackPush(
-            stack, (ExprStackItem){.symbol = EXPR_NONTERMINAL, .node = node});
+        exprStackPush(stack, (ExprStackItem){.symbol = EXPR_NONTERMINAL,
+                                            .node = node});
         return true;
     }
 
@@ -353,8 +442,8 @@ static bool reduceExpression(ExprStack *stack) {
     left->node = NULL;
     last->node = NULL;
     stack->count -= 3;
-    exprStackPush(stack,
-                  (ExprStackItem){.symbol = EXPR_NONTERMINAL, .node = node});
+    exprStackPush(stack, (ExprStackItem){.symbol = EXPR_NONTERMINAL,
+                                        .node = node});
     return true;
 }
 
@@ -373,7 +462,7 @@ static bool reduceParentheses(ExprStack *stack) {
     if (stack->items[count - 1].symbol == EXPR_LPAREN) {
         stack->count--;
         exprStackPush(stack, (ExprStackItem){.symbol = EXPR_NONTERMINAL,
-                                             .node = createUnitNode()});
+                                            .node = createUnitNode()});
         return true;
     }
 
@@ -386,24 +475,29 @@ static bool reduceParentheses(ExprStack *stack) {
     astNode *node = stack->items[count - 1].node;
     stack->items[count - 1].node = NULL;
     stack->count -= 2;
-    exprStackPush(stack,
-                  (ExprStackItem){.symbol = EXPR_NONTERMINAL, .node = node});
+    exprStackPush(stack, (ExprStackItem){.symbol = EXPR_NONTERMINAL,
+                                        .node = node});
     return true;
 }
 
 /**
- * @brief Parses an expression using the precedence table.
+ * @brief Builds an expression AST using the precedence table.
+ * @param firstValue Already-read first value, or NULL.
  * @return Expression AST, or NULL on error.
- *
- * Stops before the token after the expression.
  */
-static astNode *parseExpression(void) {
+static astNode *parseExpressionFromValue(astNode *firstValue) {
     ExprStack stack;
     exprStackInit(&stack);
     exprStackPush(&stack, (ExprStackItem){.symbol = EXPR_END});
 
+    /** used when a statement already read its first name */
+    if (firstValue != NULL) {
+        exprStackPush(&stack, (ExprStackItem){.symbol = EXPR_VALUE,
+                                              .node = firstValue});
+    }
+
     size_t openParens = 0;
-    bool expectsOperand = true;
+    bool expectsOperand = firstValue == NULL;
 
     while (true) {
         ExprSymbol input = expressionInputSymbol(expectsOperand, openParens);
@@ -425,15 +519,16 @@ static astNode *parseExpression(void) {
                     break;
                 }
             }
+            /** values advance inside expressionValueNode() */
+            if (input != EXPR_VALUE && !advance()) {
+                break;
+            }
             exprStackPush(&stack, item);
 
             if (input == EXPR_LPAREN) {
                 openParens++;
             }
             expectsOperand = input != EXPR_VALUE;
-            if (!advance()) {
-                break;
-            }
         } else if (action == PREC_REDUCE) {
             if (!reduceExpression(&stack)) {
                 syntaxError("invalid expression");
@@ -451,7 +546,8 @@ static astNode *parseExpression(void) {
             }
         } else if (action == PREC_ACCEPT) {
             /** only $ E is a complete expression */
-            if (stack.count != 2 || stack.items[1].symbol != EXPR_NONTERMINAL) {
+            if (stack.count != 2 ||
+                stack.items[1].symbol != EXPR_NONTERMINAL) {
                 syntaxError("expected expression");
                 break;
             }
@@ -468,6 +564,11 @@ static astNode *parseExpression(void) {
 
     exprStackDestroy(&stack);
     return NULL;
+}
+
+/** @brief Parses an expression from the current token. */
+static astNode *parseExpression(void) {
+    return parseExpressionFromValue(NULL);
 }
 
 /**
