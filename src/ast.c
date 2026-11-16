@@ -222,7 +222,6 @@ astNode *createLiteralNode(Token *token) {
     node->data.literal.litType = token->type;
 
     if (token->type == TOKEN_STRING_LITERAL) {
-        // The lexer owns the token, so the AST keeps its own string copy.
         size_t length = token->attribute.text.length;
         if (token->attribute.text.data == NULL || length == SIZE_MAX) {
             free(node);
