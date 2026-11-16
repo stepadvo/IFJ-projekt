@@ -68,7 +68,10 @@ typedef struct outBufNode {
     struct outBufNode *nextBuf;
 } outBufNode;
 
-/** @brief internal state of the code generator (keeps all the buffers)*/
+/**
+ * @brief internal state of the code generator (keeps all the buffers)
+ * do not change this structure when using the generator
+ * */
 typedef struct {
     /** a linked list of buffers*/
     codeGenBufNode *firstBuf;
@@ -82,6 +85,8 @@ typedef struct {
 
     char mainFunName[IFJ_GEN_MAX_ID_LEN]; /** ptr to the name of the main
                                              function in the ast */
+    char *builtinFuns; /** ptr to a string containing the code for builtin
+                          functions, that are called and not inserted in place*/
 } codeGenState;
 
 /*
@@ -92,6 +97,8 @@ typedef struct {
 
 /**
  * @brief initializes the state
+ *
+ * the .builtinFuns will be set
  *
  * @return ptr to the local state (a ptr to a local static variable)
  */
@@ -398,6 +405,23 @@ int codeGenStmtIdentif(astNode *identif, codeGenBufNode *buffer);
  * @return 0 on success, -1 on failure (memory allocation err if not debugging)
  */
 int codeGenStmtBlock(astNode *block, codeGenBufNode *buffer);
+
+/**
+ * @brief checks if the function called is a builtin function and genereates its
+ * call
+ *
+ * @param funcCall a non NULL ptr to the ast node
+ * @param buffer a non NULL ptr to the buffer
+ *
+ * @return  0 if the function was builtin
+ *          1 if the function wasn't builtin or it can be handeled by a call to
+ * the funciton (still needs to be generated) -1 on failure (memory allocation
+ * err if not debugging)
+ *
+ * it is assumed, that putting the parameters on stack has been already
+ * generated the generated function will leave its result on stack
+ */
+int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer);
 
 /**
  * @brief assembles the name of a variable in IFJcode26

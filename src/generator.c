@@ -17,7 +17,7 @@
 
 #define IFJ_GEN_DEBUG
 /** a macro for checking if the requirements set for codeGenBlock and codeGenFun
- * to work are met*/
+ * to work are met */
 #ifdef IFJ_GEN_DEBUG
     #define GEN_CHECK_PRINT(cond, retFail, str, ...)                           \
         if (!(cond)) {                                                         \
@@ -44,12 +44,94 @@
     (void)0
 
 codeGenState *codeGenInit() {
+    // the text for builtin functions
+    static char builtinCode[] =
+        "LABEL ord\n"  // function ord(value:String, index:Int)->Int and
+        "POPS GF@G1\n" // GF@G1 = value
+        "POPS GF@G2\n" // GF@G2 = index
+
+        // check if index is smaller, than 0
+        "LT GF@G3 GF@G2 int@0\n"
+        "JUMPIFEQ ord$fail GF@G3 bool@true\n"
+
+        // check is index is greater of equal than the string
+        // lentht(=not(strlen>index)) (GF@G3 = strlen(value))
+        "STRLEN GF@G3 GF@G1\n"
+        "GT GF@G3 GF@G3 GF@G2\n"
+        "JUMPIFNEQ ord$fail GF@G3 BOOL@true\n"
+
+        // get the character at index and push it to stack
+        "GETCHAR GF@G1 GF@G1 GF@G2\n"
+        "PUSHS GF@G1\n"
+        "RETURN\n"
+
+        // on fail push -1 to stack
+        "LABEL ord$fail\n"
+        "PUSHS INT@-1\n"
+        "RETURN\n"
+
+        // function subStr(value:String, start:Int, end:Int)->String
+        "LABEL subStr\n"
+        // initialize the function frame
+        "CREATEFRAME\n"
+        "PUSHFRAME\n"
+        "DEFVAR LF@value\n"
+        "DEFVAR LF@start\n"
+        "DEFVAR LF@end\n"
+        "POPS LF@value\n"
+        "POPS LF@start\n"
+        "POPS LF@end\n"
+
+        // if start < 0
+        "LT GF@G1 LF@start int@0\n"
+        "JUMPIFEQ subStr$FAIL GF@G1 bool@true\n"
+
+        // if end < 0
+        "LT GF@G1 LF@end int@0\n"
+        "JUMPIFEQ subStr$FAIL GF@G1 bool@true\n"
+
+        // if start > end
+        "GT GF@G1 LF@start LF@end\n"
+        "JUMPIFEQ subStr$FAIL GF@G1 bool@true\n"
+
+        // if if start >= strlen(value) (=if !(start < strlen(vlalue)))
+        "STRLEN GF@G2 LF@value\n"
+        "LT GF@G1 LF@start GF@G2\n"
+        "JUMPIFEQ subStr$FAIL GF@G1 bool@false\n"
+
+        // if end > strlen(value)
+        "GT GF@G1 LF@end GF@G2\n"
+        "JUMPIFEQ subStr$FAIL GF@G1 bool@true\n"
+
+        "DEFVAR LF@res\n"
+        "MOVE LF@res string@\n"
+
+        // while start < end
+        "LABEL subStr$while$start\n"
+        "LT GF@G1 LF@start LF@end\n"
+        "JUMPIFEQ subStr$while$end GF@G1 bool@false\n"
+
+        // res = concat(res, value[start])
+        "GETCHAR GF@G1 LF@value LF@start\n"
+        "CONCAT LF@res LF@RES GF@G1\n"
+
+        // start += 1
+        "ADD LF@start LF@start int@1\n"
+        "JUMP subStr$while$start\n"
+        "LABEL subStr$while$end\n"
+
+        "PUSHS LF@res\n"
+        "POPFRAME\n"
+        "RETURN\n"
+        "LABEL subStr$FAIL\n"
+        "EXIT int@40\n";
     static codeGenState state = {.firstBuf = NULL,
                                  .lastBuf = NULL,
                                  .bufsCreated = 0,
                                  .firstFun = NULL,
                                  .lastFun = NULL,
-                                 .mainFunName = ""};
+                                 .mainFunName = "",
+                                 .builtinFuns = builtinCode};
     return &state;
 }
 
@@ -105,7 +187,7 @@ int codeGenFunction(codeGenState *state, astNode *funRoot) {
                           "PUSHFRAME\n";
     const char singleParam[] = "DEFVAR %s$0\n"
                                "POPS %s$0\n";
-    const char footer[] = "LABEL %s_return\n"
+    const char footer[] = "LABEL %s$return\n"
                           "POPFRAME\n"
                           "RETURN\n";
 
@@ -165,12 +247,12 @@ int codeGenFunction(codeGenState *state, astNode *funRoot) {
 }
 
 int codeGenOutCode(codeGenState *state) {
-    // output the file header
+    // output the file header (including the builtin functions at the end)
     int len = printf(".IFJcode26\n"
                      "DEFVAR GF@void"
                      "CALL %s\n"
-                     "EXIT int@0\n",
-                     state->mainFunName);
+                     "EXIT int@0\n%s",
+                     state->mainFunName, state->builtinFuns);
 
     // output all the functoins
     outBufNode *next;
@@ -726,13 +808,22 @@ int codeGenStmtFuncCall(astNode *funcCall, codeGenBufNode *buffer,
                     -1);
     }
 
-    // generate the function call
-    const char call[] = "CALL %s\n";
-    size_t callLen = strlen(call) + strlen(funcCall->data.funcCall.funcName);
-    char callBuf[callLen + 1];
-    sprintf(callBuf, call, funcCall->data.funcCall.funcName);
+    int builtin = codeGenBuiltinFunCall(funcCall, buffer);
+    if (builtin == -1) {
+        return -1;
+    }
 
-    IFJ_GEN_TRY(codeGenInsertTxt(callBuf, buffer), -1);
+    if (builtin == 1) {
+        // the function wasn't handeled by an inline code - generate a call
+        // generate the function call
+        const char call[] = "CALL %s\n";
+        size_t callLen =
+            strlen(call) + strlen(funcCall->data.funcCall.funcName);
+        char callBuf[callLen + 1];
+        sprintf(callBuf, call, funcCall->data.funcCall.funcName);
+
+        IFJ_GEN_TRY(codeGenInsertTxt(callBuf, buffer), -1);
+    }
 
     // if no result should be left on stack and the function will return one,
     // pop it
@@ -753,7 +844,7 @@ int codeGenStmtReturn(astNode *ret, codeGenBufNode *buffer) {
 
     // jump to the end of the function for return
     const char *funName = symTableGetActive().id;
-    const char out[] = "JUMP %s_return\n";
+    const char out[] = "JUMP %s$return\n";
 
     size_t outLen = strlen(out) + strlen(funName);
     char outBuf[outLen + 1];
@@ -894,6 +985,101 @@ int codeGenStmtBlock(astNode *block, codeGenBufNode *buffer) {
     // insert a reference to the child block
     IFJ_GEN_TRY(codeGenInsertBufToTxt(buffer, block->data.block.bufferPtr), -1);
     return 0;
+}
+
+int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer) {
+    const char *name = funcCall->data.funcCall.funcName;
+    if (strcmp(name, "print") == 0) {
+        // one value of unknown type should be on stack
+        // find a way to be able to check whether the parameter is Unit
+        bool isUnitTemp = false;
+        if (isUnitTemp) {
+            IFJ_GEN_TRY(codeGenInsertTxt("WRITE string@()\n", buffer), -1);
+        } else {
+            IFJ_GEN_TRY(codeGenInsertTxt("POPS GF@G1\n"
+                                         "WRITE GF@G1\n",
+                                         buffer),
+                        -1);
+        }
+        return 0;
+    }
+    if (strcmp(name, "readLine") == 0) {
+        // no values should be on stack
+        IFJ_GEN_TRY(codeGenInsertTxt("READ GF@G1 string\n"
+                                     "PUSHS GF@G1\n",
+                                     buffer),
+                    -1);
+        return 0;
+    }
+    if (strcmp(name, "readInt") == 0) {
+        // no values should be on stack
+        IFJ_GEN_TRY(codeGenInsertTxt("READ GF@G1 int\n"
+                                     "PUSHS GF@G1\n",
+                                     buffer),
+                    -1);
+        return 0;
+    }
+    if (strcmp(name, "readDouble") == 0) {
+        // no values should be on stack
+        IFJ_GEN_TRY(codeGenInsertTxt("READ GF@G1 float\n"
+                                     "PUSHS GF@G1\n",
+                                     buffer),
+                    -1);
+        return 0;
+    }
+    if (strcmp(name, "toStr") == 0) {
+        // TODO musime zjistit, jakeho datoveho typu je parametr
+        varType typeTemp = INT;
+        switch (typeTemp) {
+        case INT:
+            IFJ_GEN_TRY(codeGenInsertTxt("INT2STRS\n", buffer), -1);
+            break;
+        case DOUBLE:
+            IFJ_GEN_TRY(codeGenInsertTxt("FLOAT2STRS\n", buffer), -1);
+            break;
+        case STRING:
+            return 0; // nothing needs to change, keep the value on stack
+        case BOOL:
+            // TODO decide whether to handle by insert or a call
+            break;
+        case UNIT:
+            IFJ_GEN_TRY(codeGenInsertTxt("POPS GF@void\n"
+                                         "PUSHS srinng@()\n",
+                                         buffer),
+                        -1);
+            break;
+        default:
+            // should not happen, check
+            return -1;
+        }
+        return 0;
+    }
+    if (strcmp(name, "toInt") == 0) {
+        // one value of type float should be on stack
+        IFJ_GEN_TRY(codeGenInsertTxt("FLOAT2INTS\n", buffer), -1);
+        return 0;
+    }
+    if (strcmp(name, "StrLength") == 0) {
+        // one value of type string should be on stack
+        IFJ_GEN_TRY(codeGenInsertTxt("POPS GF@G1\n"
+                                     "STRLEN GF@G1 GF@G1\n"
+                                     "PUSHS GF@G1\n",
+                                     buffer),
+                    -1);
+        return 0;
+    }
+    if (strcmp(name, "chr") == 0) {
+        // one value of type int should be on stack
+        // no error handeling left to the interpretor of IFJcode26
+        IFJ_GEN_TRY(codeGenInsertTxt("POPS GF@G1\n"
+                                     "INT2CHAR GF@G1 GF@G1\n"
+                                     "PUSHS GF@G1\n",
+                                     buffer),
+                    -1);
+        return 0;
+    }
+    // the rest of the builtin functions are handeled by a call => return -1
+    return 1;
 }
 
 const char *codeGenGetVarName(const char *id, codeGenBufNode *buffer) {
