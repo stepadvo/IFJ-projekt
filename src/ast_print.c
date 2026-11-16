@@ -172,8 +172,7 @@ static void printAstRec(astNode *node, int depth) {
             break;
 
         default:
-            printf("Literal(TokenType: %d)\n",
-                   (int)node->data.literal.litType);
+            printf("Literal(TokenType: %d)\n", (int)node->data.literal.litType);
             break;
         }
         break;
