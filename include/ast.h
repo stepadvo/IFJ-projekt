@@ -46,6 +46,24 @@ typedef enum {
     AST_BLOCK
 } astNodeType;
 
+/** @brief _ */
+typedef enum {
+    PLUS,          /**< Plus: "+". */
+    CONCATENATION, /**< Concatenation: "[str] + [str]" */
+    MINUS,         /**< Minus: "-". */
+    MULTIPLY,      /**< Multiplication: "*". */
+    DIVIDE,        /**< Division: "[float] / [float]". */
+    I_DIVIDE,      /**< Integer divison: "[int] / [int]" */
+    EQUAL,         /**< Equality: "==". */
+    NOT_EQUAL,     /**< Inequality: "!=". */
+    LESS,          /**< Less than: "<". */
+    LESS_EQUAL,    /**< Less than or equal to: "<=". */
+    GREATER,       /**< Greater than: ">". */
+    GREATER_EQUAL, /**< Greater than or equal to: ">=". */
+    AND,           /**< Logical conjunction: "&&". */
+    OR             /**< Logical disjunction: "||". */
+} astBinopType;
+
 /** @brief Forward declaration of the AST node structure. */
 typedef struct astNode astNode;
 
@@ -92,11 +110,16 @@ struct astNode {
          */
         struct {
             /**< The operator token (+, *, ==, etc.). */
-            TokenType op;
+            astBinopType op;
             /**< The left-hand side of the operation. */
             astNode *left;
             /**< The right-hand side of the operation. */
             astNode *right;
+            /**< If [int] binop [float]:
+             * ~> [float] binop [float]
+             */
+            bool convertLeft;
+            bool convertRight;
         } binop;
 
         /**
@@ -203,6 +226,8 @@ struct astNode {
             char *funcName;
             /**< Array of argument expressions passed to the function. */
             astNode **arguments;
+            /**< With built-in functions one argument can be Any. */
+            varType argIfAny;
             /**< The number of arguments provided. */
             size_t argCount;
             /**< The allocated size of the arguments array. */
@@ -261,7 +286,6 @@ struct astNode {
             /**< The expression to return. NULL if returning nothing. */
             astNode *value;
         } returnStmt;
-
     } data;
 };
 
@@ -372,7 +396,7 @@ int addGuardToFor(astNode *forNode, astNode *guard);
  * @param right The right operand. (The node takes ownership).
  * @return A new AST_BINOP node.
  */
-astNode *createBinopNode(TokenType op, astNode *left, astNode *right);
+astNode *createBinopNode(astBinopType op, astNode *left, astNode *right);
 
 /**
  * @brief Creates a unary operation node.
