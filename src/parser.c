@@ -350,6 +350,42 @@ static astNode *expressionValueNode(void) {
 }
 
 /**
+ * @brief Converts a type of TokenType to astBinopType.
+ * @param type The converted type.
+ * @return The returned type.
+ */
+static astBinopType convertTokenToAstBinop(TokenType type) {
+    switch (type) {
+    case TOKEN_PLUS:
+        return PLUS;
+    case TOKEN_MINUS:
+        return MINUS;
+    case TOKEN_MULTIPLY:
+        return MULTIPLY;
+    case TOKEN_DIVIDE:
+        return DIVIDE;
+    case TOKEN_EQUAL:
+        return EQUAL;
+    case TOKEN_NOT_EQUAL:
+        return NOT_EQUAL;
+    case TOKEN_LESS:
+        return LESS;
+    case TOKEN_LESS_EQUAL:
+        return LESS_EQUAL;
+    case TOKEN_GREATER:
+        return GREATER;
+    case TOKEN_GREATER_EQUAL:
+        return GREATER_EQUAL;
+    case TOKEN_AND:
+        return AND;
+    case TOKEN_OR:
+        return OR;
+    default:
+        return -1;
+    }
+}
+
+/**
  * @brief Reduces the last value or operation to E.
  * @param stack Expression stack.
  * @return True if a valid part was reduced.
@@ -394,7 +430,8 @@ static bool reduceExpression(ExprStack *stack) {
     }
 
     ExprStackItem *left = &stack->items[count - 3];
-    astNode *node = createBinopNode(op->tokenType, left->node, last->node);
+    astNode *node = createBinopNode(convertTokenToAstBinop(op->tokenType),
+                                    left->node, last->node);
     if (node == NULL) {
         return false;
     }
