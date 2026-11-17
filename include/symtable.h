@@ -126,6 +126,8 @@ funData symTableGetActive(void);
  * @details The id must be unique within a block. If an id is identical as an id
  * in a "higher" block, the id from the "higher" block is masked and can be used
  * when the current block is ended
+ * @details All variables will be assigned an id of type int, that will be
+ * unique within the local table (function)
  */
 int symTableInsertVar(const char *id, varType dataType, bool isConst);
 
@@ -136,13 +138,15 @@ int symTableInsertVar(const char *id, varType dataType, bool isConst);
  * block)
  *
  * @param id identifier of the symbol to be found
+ * @param uniqueId the value at *uniqueId will be set as the unique id of the
+ * variable if uniqueId != NULL
  *
  * @return  data of the variable when found
  *          {.id = NULL, .dataType = UNKNOWN, .isConst = true} when not found
  *          {.id = NULL, .dataType = UNKNOWN, .isConst = false} when no function
  * is active
  */
-varData symTableFindVar(const char *id);
+varData symTableFindVar(const char *id, int *uniqeId);
 
 /**
  * @brief finds the symbol only within the current block of the active function
