@@ -12,9 +12,11 @@ VPATH=src:test:include
 TEST_BST = test_bst
 TEST_SYMTABLE = test_symtable
 TEST_AST = test_ast
+TEST_EXPRESSION = test_expression
+#TEST_PARSER = test_parser
 
 #add all test targets
-TEST_STEMS = TEST_BST TEST_SYMTABLE TEST_AST # TEST_EXAMPLE ...
+TEST_STEMS = TEST_BST TEST_SYMTABLE TEST_AST TEST_EXPRESSION #TEST_PARSER
 
 #objects:
 OBJECTS = compiler.o parser.o ast.o lexer.o token.o symtable.o bst.o errcode.o ast_print.o expression.o
@@ -22,6 +24,8 @@ OBJECTS = compiler.o parser.o ast.o lexer.o token.o symtable.o bst.o errcode.o a
 TEST_BST_O = bst.o test_bst.o errcode.o
 TEST_SYMTABLE_O = bst.o symtable.o test_symtable.o errcode.o
 TEST_AST_O = ast.o test_ast.o
+TEST_EXPRESSION_O = expression.o ast.o test_expression.o
+#TEST_PARSER_O = parser.o expression.o ast.o lexer.o token.o errcode.o test_parser.o
 
 #rules:
 #add the build rules here
@@ -49,7 +53,7 @@ $($(1)): $($(1))_build
 	./$($(1)).out
 
 $($(1))_build: $($(1)_O)
-	$(CC) $(LDFLAGS) -o $($(1)).out $($(1)_O)
+	$(CXX) -o $($(1)).out $($(1)_O) $(LDFLAGS)
 endef
 
 $(foreach t,$(TEST_STEMS),$(eval $(call DEFINE_TEST_RULES,$(t))))
