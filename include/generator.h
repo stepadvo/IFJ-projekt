@@ -434,7 +434,7 @@ int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer);
  * until the next call of the function
  *
  * local variables follow the naming convention:
- *  LF@< name in IFJ26 >$< unique ID >
+ *  LF@< name in IFJ26 >$< unique ID from symtable >
  *
  * (the variable name is redundant, but simplifies debugging)
  */

@@ -249,7 +249,10 @@ int codeGenFunction(codeGenState *state, astNode *funRoot) {
 int codeGenOutCode(codeGenState *state) {
     // output the file header (including the builtin functions at the end)
     int len = printf(".IFJcode26\n"
-                     "DEFVAR GF@void"
+                     "DEFVAR GF@void\n"
+                     "DEFVAR GF@G1\n"
+                     "DEFVAR GF@G2\n"
+                     "DEFVAR GF@G3\n"
                      "CALL %s\n"
                      "EXIT int@0\n%s",
                      state->mainFunName, state->builtinFuns);
@@ -854,10 +857,69 @@ int codeGenStmtReturn(astNode *ret, codeGenBufNode *buffer) {
 }
 
 int codeGenStmtBinOp(astNode *binOp, codeGenBufNode *buffer) {
-    // TODO - after figuring out how we differentiate between regural division
-    // and int division and the differentiating between + and concatenation
-    (void)binOp;
-    (void)buffer;
+    // generate the 2 parameters and leave their values on stack
+    IFJ_GEN_TRY(codeGenStatement(binOp->data.binop.left, buffer, true), -1);
+    IFJ_GEN_TRY(codeGenStatement(binOp->data.binop.right, buffer, true), -1);
+
+    // generate the operation
+    TokenType type;
+    switch (type) {
+        /*
+         //TODO install the correct cases after ast is updated
+    case add:
+        IFJ_GEN_TRY(codeGenInsertTxt("ADDS\n", buffer), -1);
+        break;
+    case sub:
+        IFJ_GEN_TRY(codeGenInsertTxt("SUBS\n", buffer), -1);
+        break;
+    case mul:
+        IFJ_GEN_TRY(codeGenInsertTxt("MULS\n", buffer), -1);
+        break;
+    case div:
+        IFJ_GEN_TRY(codeGenInsertTxt("DIVS\n", buffer), -1);
+        break;
+    case idiv:
+        IFJ_GEN_TRY(codeGenInsertTxt("IDIVS\n", buffer), -1);
+        break;
+    case concat:
+        IFJ_GEN_TRY(codeGenInsertTxt("POPS GF@G1\n"
+                                     "POPS GF@G2\n"
+                                     "CONCAT GF@G2 GF@G2 GF@G1\n"
+                                     "PUSHS GF@G1\n",
+                                     buffer),
+                    -1);
+        break;
+    case equation:
+        IFJ_GEN_TRY(codeGenInsertTxt("EQS\n", buffer), -1);
+        break;
+    case less:
+        IFJ_GEN_TRY(codeGenInsertTxt("LTS\n", buffer), -1);
+        break;
+    case greater:
+        IFJ_GEN_TRY(codeGenInsertTxt("GTS\n", buffer), -1);
+        break;
+    case lesseq:
+        IFJ_GEN_TRY(codeGenInsertTxt("GTS\n"
+                                     "NOTS\n",
+                                     buffer),
+                    -1);
+        break;
+    case greateq:
+        IFJ_GEN_TRY(codeGenInsertTxt("LTS\n"
+                                     "NOTS\n",
+                                     buffer),
+                    -1);
+        break;
+    case and:
+        IFJ_GEN_TRY(codeGenInsertTxt("ANDS\n", buffer), -1);
+        break;
+    case or:
+        IFJ_GEN_TRY(codeGenInsertTxt("ORS\n", buffer), -1);
+        break;
+    */
+    default:
+        GEN_CHECK_PRINT(false, -1, "Unsupported binary operation\n");
+    }
     return 0;
 }
 
@@ -909,12 +971,11 @@ int codeGenStmtLiteral(astNode *lit, codeGenBufNode *buffer) {
         return codeGenStmtStringLit(lit->data.literal.attribute.text.data,
                                     lit->data.literal.attribute.text.length,
                                     buffer);
-    /*
-    TODO inquire about unit literal
-    case UNIT:
-        memcpy(buf, "nil@nil", 4);
+    // TODO maybe unit literal uses a different enum element
+    case TOKEN_KW_UNIT:
+        // make buf an empty string
+        buf[0] = '\0';
         break;
-     */
     default:
         GEN_CHECK_PRINT(
             false, -1,
@@ -1028,7 +1089,7 @@ int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer) {
         return 0;
     }
     if (strcmp(name, "toStr") == 0) {
-        // TODO musime zjistit, jakeho datoveho typu je parametr
+        // TODO need to know, what data type is the parameter
         varType typeTemp = INT;
         switch (typeTemp) {
         case INT:
