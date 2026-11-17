@@ -2,23 +2,21 @@ CC = gcc
 CXX = g++
 CFLAGS = -Wall -Werror -Wextra -Iinclude -std=c11
 CXXFLAGS = -Wall -Werror -Wextra -Iinclude -std=c++17
-LDFLAGS = -lgtest -lgtest_main -pthread -lstdc++
+LDFLAGS = -lgtest_main -lgtest -pthread
 
 VPATH=src:test:include
 
 #targets:
-#add the build targets here
-#TEST_EXAMPLE = test_example
+TEST_LEXER = test_lexer
+TEST_TOKEN = test_token
 
-#add all test targets
-TEST_STEMS = # TEST_EXAMPLE ...
+TEST_STEMS = TEST_LEXER TEST_TOKEN
 
 #objects:
-BUILD_O = #src_example.o	#add all further objects needed for the whole application
-#TEST_EXAMPLE_O = test_example.o src_example.o
+TEST_LEXER_O = test_lexer.o lexer.o token.o errcode.o
+TEST_TOKEN_O = test_token.o token.o
 
 #rules:
-#add the build rules here
 all: build
 
 build:
@@ -29,18 +27,22 @@ clean:
 format:
 	clang-format -i include/* src/* test/*
 
-test: $(foreach t,$(TEST_STEMS),$($(t))_build)
-	$(foreach t,$(TEST_STEMS), ./$($(t)).out)
+lexer.o test_lexer.o: include/lexer.h include/token.h include/compiler.h
+token.o test_token.o: include/token.h
+errcode.o: include/compiler.h
+
+test: $(foreach t,$(TEST_STEMS),$($(t)))
 
 define DEFINE_TEST_RULES =
 $($(1)): $($(1))_build
 	./$($(1)).out
 
 $($(1))_build: $($(1)_O)
-	$(CC) $(LDFLAGS) -o $($(1)).out $($(1)_O)
+	$(CXX) -o $($(1)).out $($(1)_O) $(LDFLAGS)
 endef
 
 $(foreach t,$(TEST_STEMS),$(eval $(call DEFINE_TEST_RULES,$(t))))
 
-.PHONY: all clean format
+.PHONY: all clean format test \
+	$(foreach t,$(TEST_STEMS),$($(t)) $($(t))_build)
 
