@@ -15,7 +15,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define IFJ_GEN_DEBUG
 /** a macro for checking if the requirements set for codeGenBlock and codeGenFun
  * to work are met */
 #ifdef IFJ_GEN_DEBUG
@@ -33,7 +32,7 @@
         if (!(cond))                                                           \
         return retFail
 #else
-    #define GEN_CHECK(cond, str, ...) (void)0
+    #define GEN_CHECK_PRINT(cond, str, ...) (void)0
     #define GEN_CHECK(cond, retFail) (void)0
 #endif
 
@@ -281,6 +280,9 @@ int codeGenFunction(codeGenState *state, astNode *funRoot) {
         state->lastFun->nextBuf = outBuf;
     }
     state->lastFun = outBuf;
+
+    // set the function in the ast as generated
+    funRoot->data.funcDef.alreadyGenerated = true;
 
     return 0;
 }
@@ -964,7 +966,7 @@ int codeGenStmtBinOp(astNode *binOp, codeGenBufNode *buffer) {
 
 int codeGenStmtUnOp(astNode *unOp, codeGenBufNode *buffer) {
     // if the operator is unary - then we also need a prefix
-    if (unOp->data.unop.op == TOKEN_MINUS) {
+    if (unOp->data.unop.op == UNARY_MINUS) {
         IFJ_GEN_TRY(codeGenInsertTxt("PUSHS int@0\n", buffer), -1);
     }
 
@@ -973,13 +975,13 @@ int codeGenStmtUnOp(astNode *unOp, codeGenBufNode *buffer) {
 
     // generate the operator suffix
     switch (unOp->data.unop.op) {
-    case TOKEN_NOT:
+    case NOT:
         IFJ_GEN_TRY(codeGenInsertTxt("NOTS\n", buffer), -1);
         break;
-    case TOKEN_PLUS:
+    case UNARY_PLUS:
         // no further instructions needed
         break;
-    case TOKEN_MINUS:
+    case UNARY_MINUS:
         IFJ_GEN_TRY(codeGenInsertTxt("SUBS\n", buffer), -1);
         break;
     default:
@@ -1171,7 +1173,7 @@ const char *codeGenGetVarName(const char *id) {
 
     int uniqueId;
     // find the name in symTable
-    varData nameData = symTableFindVar(id, &uniqueId);
+    symTableFindVar(id, &uniqueId);
     GEN_CHECK_PRINT(nameData.id != NULL, NULL,
                     "The variable name %s not found in symtable\n", id);
 
