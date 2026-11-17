@@ -1,11 +1,18 @@
-/** @file test_ast.cpp @brief GoogleTest for AST constructors and ownership. */
+/**
+ * @file test_ast.cpp
+ * @brief GoogleTest for AST constructors and ownership.
+ * @author Jiří Dohnal, xdohnaj00@stud.fit.vutbr.cz
+ */
+
 #include <cstdlib>
 #include <cstring>
 #include <gtest/gtest.h>
+
 extern "C" {
 #include "ast.h"
 #include "token.h"
 }
+
 static char *copyName(const char *x) {
     char *p = static_cast<char *>(malloc(strlen(x) + 1));
     if (p)
@@ -125,3 +132,7 @@ int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
+
+/*
+ * end test_ast.cpp
+ */
