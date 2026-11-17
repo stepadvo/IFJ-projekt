@@ -33,77 +33,53 @@ static const char *typeName(varType type) {
     }
 }
 
-/** @brief Returns the symbol used in the source for an operator token. */
-static const char *operatorSymbol(TokenType unopType, astBinopType binopType,
-                                  bool isBinop) {
-    if (!isBinop) {
-        switch (unopType) {
-        case TOKEN_ASSIGN:
-            return "=";
-        case TOKEN_PLUS:
-            return "+";
-        case TOKEN_MINUS:
-            return "-";
-        case TOKEN_MULTIPLY:
-            return "*";
-        case TOKEN_DIVIDE:
-            return "/";
-        case TOKEN_EQUAL:
-            return "==";
-        case TOKEN_NOT_EQUAL:
-            return "!=";
-        case TOKEN_LESS:
-            return "<";
-        case TOKEN_LESS_EQUAL:
-            return "<=";
-        case TOKEN_GREATER:
-            return ">";
-        case TOKEN_GREATER_EQUAL:
-            return ">=";
-        case TOKEN_NOT:
-            return "!";
-        case TOKEN_AND:
-            return "&&";
-        case TOKEN_OR:
-            return "||";
-        case TOKEN_LEFT_ARROW:
-            return "<-";
-        default:
-            return "?!";
-        }
-    } else {
-        switch (binopType) {
-        case PLUS: /**< Plus: "+". */
-            return "+";
-        case CONCATENATION: /**< Concatenation: "[str] + [str]" */
-            return "+";
-        case MINUS: /**< Minus: "-". */
-            return "-";
-        case MULTIPLY: /**< Multiplication: "*". */
-            return "*";
-        case DIVIDE: /**< Division: "[float] / [float]". */
-            return "/";
-        case I_DIVIDE: /**< Integer divison: "[int] / [int]" */
-            return "/";
-        case EQUAL: /**< Equality: "==". */
-            return "==";
-        case NOT_EQUAL: /**< Inequality: "!=". */
-            return "!=";
-        case LESS: /**< Less than: "<". */
-            return "<";
-        case LESS_EQUAL: /**< Less than or equal to: "<=". */
-            return "<=";
-        case GREATER: /**< Greater than: ">". */
-            return ">";
-        case GREATER_EQUAL: /**< Greater than or equal to: ">=". */
-            return ">=";
-        case AND: /**< Logical conjunction: "&&". */
-            return "&&";
-        case OR: /**< Logical disjunction: "||". */
-            return "||";
-        default:
-            return "?!";
-        }
+/** @brief Returns the source symbol for a unary operator. */
+static const char *unopSymbol(astUnopType unopType) {
+    switch (unopType) {
+    case NOT:
+        return "!";
+    case UNARY_PLUS:
+        return "+";
+    case UNARY_MINUS:
+        return "-";
+    default:
+        return "?!";
+    }
+}
+
+/** @brief Returns the source symbol for a binary operator. */
+static const char *binopSymbol(astBinopType binopType) {
+    switch (binopType) {
+    case PLUS:
+        return "+";
+    case CONCATENATION:
+        return "+";
+    case MINUS:
+        return "-";
+    case MULTIPLY:
+        return "*";
+    case DIVIDE:
+        return "/";
+    case I_DIVIDE:
+        return "/";
+    case EQUAL:
+        return "==";
+    case NOT_EQUAL:
+        return "!=";
+    case LESS:
+        return "<";
+    case LESS_EQUAL:
+        return "<=";
+    case GREATER:
+        return ">";
+    case GREATER_EQUAL:
+        return ">=";
+    case AND:
+        return "&&";
+    case OR:
+        return "||";
+    default:
+        return "?!";
     }
 }
 
@@ -233,13 +209,11 @@ static void printNodeSummary(const astNode *node) {
         break;
 
     case AST_BINOP:
-        printf("BinOp (%s)",
-               operatorSymbol((TokenType){0}, node->data.binop.op, true));
+        printf("BinOp (%s)", binopSymbol(node->data.binop.op));
         break;
 
     case AST_UNOP:
-        printf("UnOp (%s)",
-               operatorSymbol(node->data.unop.op, (astBinopType){0}, false));
+        printf("UnOp (%s)", unopSymbol(node->data.unop.op));
         break;
 
     case AST_LITERAL:

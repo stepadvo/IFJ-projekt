@@ -46,22 +46,29 @@ typedef enum {
     AST_BLOCK
 } astNodeType;
 
-/** @brief _ */
+/** @brief Type of unary oparators. */
 typedef enum {
-    PLUS,          /**< Plus: "+". */
+    UNARY_MINUS, /**< Unary minus: "-[val]" */
+    NOT,         /**< Not: "![val]" */
+    UNARY_PLUS   /**< Unary plus: "+[val]" */
+} astUnopType;
+
+/** @brief Type of binary oparators */
+typedef enum {
+    PLUS,          /**< Plus: "+" */
     CONCATENATION, /**< Concatenation: "[str] + [str]" */
-    MINUS,         /**< Minus: "-". */
-    MULTIPLY,      /**< Multiplication: "*". */
-    DIVIDE,        /**< Division: "[float] / [float]". */
+    MINUS,         /**< Minus: "-" */
+    MULTIPLY,      /**< Multiplication: "*" */
+    DIVIDE,        /**< Division: "[float] / [float]" */
     I_DIVIDE,      /**< Integer divison: "[int] / [int]" */
-    EQUAL,         /**< Equality: "==". */
-    NOT_EQUAL,     /**< Inequality: "!=". */
-    LESS,          /**< Less than: "<". */
-    LESS_EQUAL,    /**< Less than or equal to: "<=". */
-    GREATER,       /**< Greater than: ">". */
-    GREATER_EQUAL, /**< Greater than or equal to: ">=". */
-    AND,           /**< Logical conjunction: "&&". */
-    OR             /**< Logical disjunction: "||". */
+    EQUAL,         /**< Equality: "==" */
+    NOT_EQUAL,     /**< Inequality: "!=" */
+    LESS,          /**< Less than: "<" */
+    LESS_EQUAL,    /**< Less than or equal to: "<=" */
+    GREATER,       /**< Greater than: ">" */
+    GREATER_EQUAL, /**< Greater than or equal to: ">=" */
+    AND,           /**< Logical conjunction: "&&" */
+    OR             /**< Logical disjunction: "||" */
 } astBinopType;
 
 /** @brief Forward declaration of the AST node structure. */
@@ -109,7 +116,7 @@ struct astNode {
          * Operator precedence is determined by how the tree is structured.
          */
         struct {
-            /**< The operator token (+, *, ==, etc.). */
+            /**< The operator (+, *, ==, etc.). */
             astBinopType op;
             /**< The left-hand side of the operation. */
             astNode *left;
@@ -126,8 +133,8 @@ struct astNode {
          * @brief A unary operation (like negation or logical NOT).
          */
         struct {
-            /**< The unary operator token (-, +, !). */
-            TokenType op;
+            /**< The unary operator (-, +, !). */
+            astUnopType op;
             /**< The expression being modified. */
             astNode *operand;
         } unop;
@@ -404,7 +411,7 @@ astNode *createBinopNode(astBinopType op, astNode *left, astNode *right);
  * @param operand The expression being modified. (The node takes ownership).
  * @return A new AST_UNOP node.
  */
-astNode *createUnopNode(TokenType op, astNode *operand);
+astNode *createUnopNode(astUnopType op, astNode *operand);
 
 /**
  * @brief Creates an identifier reference node.

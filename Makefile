@@ -42,6 +42,7 @@ test: $(foreach t,$(TEST_STEMS),$($(t))_build)
 printast:
 	$(MAKE) clean
 	$(MAKE) CFLAGS="$(CFLAGS) -DDEBUG_AST" all
+	rm -f *.o
 
 define DEFINE_TEST_RULES =
 $($(1)): $($(1))_build
