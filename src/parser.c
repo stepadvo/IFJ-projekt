@@ -30,9 +30,10 @@ static bool advance(void) {
     if (status == LEXER_OK)
         return true;
     if (status == LEXER_INTERNAL_ERROR)
-        ERRCODE = 99;
-    else if (ERRCODE == 0)
-        ERRCODE = 1;
+        setErrCode(99);
+    else
+        setErrCode(1);
+
     return false;
 }
 
@@ -43,9 +44,7 @@ static bool advance(void) {
 static void syntaxError(const char *message) {
     fprintf(stderr, "Syntax error at line %zu: %s\n", currentToken.line,
             message);
-    if (ERRCODE == 0) {
-        ERRCODE = 2;
-    }
+    setErrCode(2);
 
     return;
 }
@@ -350,38 +349,75 @@ static astNode *expressionValueNode(void) {
 }
 
 /**
- * @brief Converts a type of TokenType to astBinopType.
- * @param type The converted type.
- * @return The returned type.
+ * @brief Converts a lexer token to a binary AST operator.
+ * @param type Lexer token type.
+ * @param result Receives the corresponding AST operator.
+ * @return True if the token represents a binary operator.
  */
-static astBinopType convertTokenToAstBinop(TokenType type) {
+static bool convertTokenToAstBinop(TokenType type, astBinopType *result) {
     switch (type) {
     case TOKEN_PLUS:
-        return PLUS;
+        *result = PLUS;
+        break;
     case TOKEN_MINUS:
-        return MINUS;
+        *result = MINUS;
+        break;
     case TOKEN_MULTIPLY:
-        return MULTIPLY;
+        *result = MULTIPLY;
+        break;
     case TOKEN_DIVIDE:
-        return DIVIDE;
+        *result = DIVIDE;
+        break;
     case TOKEN_EQUAL:
-        return EQUAL;
+        *result = EQUAL;
+        break;
     case TOKEN_NOT_EQUAL:
-        return NOT_EQUAL;
+        *result = NOT_EQUAL;
+        break;
     case TOKEN_LESS:
-        return LESS;
+        *result = LESS;
+        break;
     case TOKEN_LESS_EQUAL:
-        return LESS_EQUAL;
+        *result = LESS_EQUAL;
+        break;
     case TOKEN_GREATER:
-        return GREATER;
+        *result = GREATER;
+        break;
     case TOKEN_GREATER_EQUAL:
-        return GREATER_EQUAL;
+        *result = GREATER_EQUAL;
+        break;
     case TOKEN_AND:
-        return AND;
+        *result = AND;
+        break;
     case TOKEN_OR:
-        return OR;
+        *result = OR;
+        break;
     default:
-        return -1;
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * @brief Converts a lexer token to a unary AST operator.
+ * @param type Lexer token type.
+ * @param result Receives the corresponding AST operator.
+ * @return True if the token represents a unary operator.
+ */
+static bool convertTokenToAstUnop(TokenType type, astUnopType *result) {
+    switch (type) {
+    case TOKEN_MINUS:
+        *result = UNARY_MINUS;
+        return true;
+    case TOKEN_NOT:
+        *result = NOT;
+        return true;
+    case TOKEN_PLUS:
+        *result = UNARY_PLUS;
+        return true;
+    default:
+        return false;
     }
 }
 
@@ -412,7 +448,11 @@ static bool reduceExpression(ExprStack *stack) {
 
     /** unary E -> E */
     if (op->symbol == EXPR_UNARY) {
-        astNode *node = createUnopNode(op->tokenType, last->node);
+        astUnopType unOp;
+        if (!convertTokenToAstUnop(op->tokenType, &unOp)) {
+            return false;
+        }
+        astNode *node = createUnopNode(unOp, last->node);
         if (node == NULL) {
             return false;
         }
@@ -430,8 +470,11 @@ static bool reduceExpression(ExprStack *stack) {
     }
 
     ExprStackItem *left = &stack->items[count - 3];
-    astNode *node = createBinopNode(convertTokenToAstBinop(op->tokenType),
-                                    left->node, last->node);
+    astBinopType binOp;
+    if (!convertTokenToAstBinop(op->tokenType, &binOp)) {
+        return false;
+    }
+    astNode *node = createBinopNode(binOp, left->node, last->node);
     if (node == NULL) {
         return false;
     }
@@ -982,7 +1025,7 @@ static astNode *parseFunctionDef(bool isMain) {
         freeAst(body);
         freeParameters(params, paramCount);
         free(name);
-        ERRCODE = 99;
+        setErrCode(99);
         return NULL;
     }
 
@@ -1000,7 +1043,7 @@ astNode *parse(void) {
     lexer = lexerCreate(stdin);
     if (lexer == NULL) {
         fprintf(stderr, "Internal error: could not create lexer\n");
-        ERRCODE = 99;
+        setErrCode(99);
         return NULL;
     }
     astNode *root = NULL;
