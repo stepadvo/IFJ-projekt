@@ -1,8 +1,8 @@
 #include "compiler.h"
 #include "ast.h"
 #include "ast_print.h"
-#include "symtable.h"
 #include "parser.h"
+#include "symtable.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -13,9 +13,9 @@ int main(int argc, char *argv[]) {
 
     astNode *root = parse();
 
-    #ifdef DEBUG_AST
+#ifdef DEBUG_AST
     printAst(root);
-    #endif
+#endif
 
     freeAst(root);
 
