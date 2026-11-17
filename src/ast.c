@@ -165,6 +165,7 @@ astNode *createFuncCallNode(char *name) {
 
     astNode *node = newNode(AST_FUNC_CALL);
     node->data.funcCall.funcName = name;
+    node->data.funcCall.argIfAny = UNKNOWN;
     return node;
 }
 
@@ -180,7 +181,7 @@ int addArgumentToCall(astNode *callNode, astNode *argument) {
     return 0;
 }
 
-astNode *createBinopNode(TokenType op, astNode *left, astNode *right) {
+astNode *createBinopNode(astBinopType op, astNode *left, astNode *right) {
     if (left == NULL || right == NULL)
         return NULL;
 
