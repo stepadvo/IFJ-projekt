@@ -11,21 +11,24 @@ VPATH=src:test:include
 #TEST_EXAMPLE = test_example
 TEST_BST = test_bst
 TEST_SYMTABLE = test_symtable
+TEST_AST = test_ast
 
 #add all test targets
-TEST_STEMS = TEST_BST TEST_SYMTABLE # TEST_EXAMPLE ...
+TEST_STEMS = TEST_BST TEST_SYMTABLE TEST_AST # TEST_EXAMPLE ...
 
 #objects:
-BUILD_O = #src_example.o	#add all further objects needed for the whole application
+OBJECTS = compiler.o parser.o ast.o lexer.o token.o symtable.o bst.o errcode.o ast_print.o
 #TEST_EXAMPLE_O = test_example.o src_example.o
 TEST_BST_O = bst.o test_bst.o errcode.o
 TEST_SYMTABLE_O = bst.o symtable.o test_symtable.o errcode.o
+TEST_AST_O = ast.o test_ast.o
 
 #rules:
 #add the build rules here
 all: build
 
-build:
+build: $(OBJECTS)
+	$(CC) $(CFLAGS) -o compiler.out $(OBJECTS)
 
 clean:
 	rm -f *.o *.out
@@ -34,7 +37,11 @@ format:
 	clang-format -i include/* src/* test/*
 
 test: $(foreach t,$(TEST_STEMS),$($(t))_build)
-	$(foreach t,$(TEST_STEMS), ./$($(t)).out)
+	@set -e; $(foreach t,$(TEST_STEMS),./$($(t)).out;)
+
+printast:
+	$(MAKE) clean
+	$(MAKE) CFLAGS="$(CFLAGS) -DDEBUG_AST" all
 
 define DEFINE_TEST_RULES =
 $($(1)): $($(1))_build
@@ -46,5 +53,4 @@ endef
 
 $(foreach t,$(TEST_STEMS),$(eval $(call DEFINE_TEST_RULES,$(t))))
 
-.PHONY: all clean format
-
+.PHONY: all clean format printast test
