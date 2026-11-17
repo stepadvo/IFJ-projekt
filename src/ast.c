@@ -192,7 +192,7 @@ astNode *createBinopNode(astBinopType op, astNode *left, astNode *right) {
     return node;
 }
 
-astNode *createUnopNode(TokenType op, astNode *operand) {
+astNode *createUnopNode(astUnopType op, astNode *operand) {
     if (operand == NULL)
         return NULL;
 
