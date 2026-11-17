@@ -7,7 +7,7 @@
  */
 
 #ifndef SYMTABLE_H
-    #define SYMTABLE_H
+#define SYMTABLE_H
 
 #include "compiler.h"
 #include <stdbool.h>
