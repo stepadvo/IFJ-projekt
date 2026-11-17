@@ -565,7 +565,7 @@ int codeGenStatement(astNode *node, codeGenBufNode *buffer, bool leaveVal) {
 
 int codeGenStmtVarDef(astNode *varDef, codeGenBufNode *buffer) {
     // get the name in IFJcode26
-    const char *name = codeGenGetVarName(varDef->data.varDef.name, buffer);
+    const char *name = codeGenGetVarName(varDef->data.varDef.name);
     GEN_CHECK(name != NULL, -1);
 
     const char overhead[] = "DEFVAR %s\n"
@@ -587,7 +587,7 @@ int codeGenStmtVarDef(astNode *varDef, codeGenBufNode *buffer) {
 
 int codeGenStmtAssign(astNode *assign, codeGenBufNode *buffer) {
     // get the name in IFJcode26
-    const char *name = codeGenGetVarName(assign->data.assign.name, buffer);
+    const char *name = codeGenGetVarName(assign->data.assign.name);
     GEN_CHECK(name != NULL, -1);
 
     const char overhead[] = "POPS %s\n";
@@ -964,7 +964,7 @@ int codeGenStmtStringLit(const char *str, size_t lenght,
 
 int codeGenStmtIdentif(astNode *identif, codeGenBufNode *buffer) {
     // translate the name to IFJcode26
-    const char *name = codeGenGetVarName(identif->data.identifier.name, buffer);
+    const char *name = codeGenGetVarName(identif->data.identifier.name);
     GEN_CHECK(name != NULL, -1);
 
     // assemble the final string and insert to buffer
@@ -1082,22 +1082,21 @@ int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer) {
     return 1;
 }
 
-const char *codeGenGetVarName(const char *id, codeGenBufNode *buffer) {
+const char *codeGenGetVarName(const char *id) {
     static char nameBuf[IFJ_GEN_MAX_ID_LEN];
 
+    int uniqueId;
     // find the name in symTable
-    varData nameData = symTableFindVar(id);
+    varData nameData = symTableFindVar(id, &uniqueId);
     GEN_CHECK_PRINT(nameData.id != NULL, NULL,
                     "The variable name %s not found in symtable\n", id);
 
     // construct the name in IFJ26
-    sprintf(nameBuf, "LF@%s$%i$%i", id, nameData.blockDepth, buffer->bufNum);
+    sprintf(nameBuf, "LF@%s$%i", id, uniqueId);
     return nameBuf;
 }
 
 const char *codeGenGetLabelId(codeGenBufNode *buffer) {
-    // TODO remake after the symbol table is updated, so the variable names are
-    // translated into numbers
     static char idBuf[IFJ_GEN_MAX_ID_LEN];
 
     // find the function name and block depth in symTable (should be the active

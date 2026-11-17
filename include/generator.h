@@ -434,9 +434,11 @@ int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer);
  * until the next call of the function
  *
  * local variables follow the naming convention:
- *  LF@< name in IFJ26 >$< blockDepth >$< number of buffer (block) >
+ *  LF@< name in IFJ26 >$< unique ID >
+ *
+ * (the variable name is redundant, but simplifies debugging)
  */
-const char *codeGenGetVarName(const char *id, codeGenBufNode *buffer);
+const char *codeGenGetVarName(const char *id);
 
 /**
  * @brief assembles a unique label name
