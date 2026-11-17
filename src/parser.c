@@ -3,7 +3,8 @@
  * @brief Recursive-descent parser for the currently supported IFJ26 syntax.
  * @author Jiří Dohnal, xdohnaj00@stud.fit.vutbr.cz
  *
- * Parses function definitions, expressions, calls, blocks and if statements.
+ * Parses function definitions, expressions, calls, blocks and control
+ * statements.
  */
 
 #include "parser.h"
@@ -568,8 +569,7 @@ static astNode *parseExpressionFromValue(astNode *firstValue) {
 /** @brief Parses an expression from the current token. */
 static astNode *parseExpression(void) { return parseExpressionFromValue(NULL); }
 
-/** @brief Parses an indented block.
- *  @param parentIndent Indent of its header.
+/** @brief Parses an indented block. @param parentIndent Indent of its header.
  */
 static astNode *parseBlock(size_t parentIndent);
 
@@ -619,9 +619,7 @@ static astNode *parseVarDef(bool isConstant) {
     return node;
 }
 
-/** @brief Parses a return statement.
- *  @return Return AST, or NULL on error.
- */
+/** @brief Parses a return statement. @return Return AST, or NULL on error. */
 static astNode *parseReturn(void) {
     if (!advance()) {
         return NULL;
@@ -702,6 +700,42 @@ static astNode *parseIf(size_t indent) {
 }
 
 /**
+ * @brief Parses a while loop.
+ * @param indent Indent of the while line.
+ * @return While AST, or NULL on error.
+ */
+static astNode *parseWhile(size_t indent) {
+    if (!match(TOKEN_KW_WHILE, "expected 'while'")) {
+        return NULL;
+    }
+
+    astNode *condition = parseExpression();
+    if (condition == NULL) {
+        return NULL;
+    }
+
+    if (!match(TOKEN_KW_DO, "expected 'do'") ||
+        !match(TOKEN_NEWLINE, "expected newline after 'do'")) {
+        freeAst(condition);
+        return NULL;
+    }
+
+    /** body must be indented */
+    astNode *body = parseBlock(indent);
+    if (body == NULL) {
+        freeAst(condition);
+        return NULL;
+    }
+
+    astNode *node = createWhileNode(condition, body);
+    if (node == NULL) {
+        freeAst(condition);
+        freeAst(body);
+    }
+    return node;
+}
+
+/**
  * @brief Parses one statement.
  * @param indent Indent of its line.
  * @return Statement AST, or NULL on error.
@@ -716,6 +750,8 @@ static astNode *parseStatement(size_t indent) {
         return parseReturn();
     case TOKEN_KW_IF:
         return parseIf(indent);
+    case TOKEN_KW_WHILE:
+        return parseWhile(indent);
     case TOKEN_IDENTIFIER: {
         /** check if name starts an assignment or expression */
         char *name = copyName();
@@ -788,8 +824,8 @@ static astNode *parseBlock(size_t parentIndent) {
         }
         addStatementToBlock(block, statement);
 
-        /** if consumes its own lines and blocks */
-        if (statement->type == AST_IF) {
+        /** if/while already parsed their blocks */
+        if (statement->type == AST_IF || statement->type == AST_WHILE) {
             afterSemicolon = false;
             continue;
         }
