@@ -3,8 +3,7 @@
  * @brief Recursive-descent parser for the currently supported IFJ26 syntax.
  * @author Jiří Dohnal, xdohnaj00@stud.fit.vutbr.cz
  *
- * Parses the mandatory prolog, function headers, and single-line expressions.
- * Indented blocks and function calls will be added later.
+ * Parses function definitions, expressions, calls, blocks and if statements.
  */
 
 #include "parser.h"
@@ -339,9 +338,9 @@ static astNode *parseIdentifierValue(char *name) {
  * @return True for binary operators.
  */
 static bool isBinarySymbol(ExprSymbol symbol) {
-    return symbol == EXPR_OR || symbol == EXPR_AND ||
-           symbol == EXPR_EQUALITY || symbol == EXPR_COMPARISON ||
-           symbol == EXPR_ADD || symbol == EXPR_MULTIPLY;
+    return symbol == EXPR_OR || symbol == EXPR_AND || symbol == EXPR_EQUALITY ||
+           symbol == EXPR_COMPARISON || symbol == EXPR_ADD ||
+           symbol == EXPR_MULTIPLY;
 }
 
 /**
@@ -350,7 +349,8 @@ static bool isBinarySymbol(ExprSymbol symbol) {
  * @param openParens Number of unmatched '(' on the stack.
  * @return Symbol for the precedence table.
  */
-static ExprSymbol expressionInputSymbol(bool expectsOperand, size_t openParens) {
+static ExprSymbol expressionInputSymbol(bool expectsOperand,
+                                        size_t openParens) {
     /** these tokens end the expression only outside parentheses */
     if (openParens == 0) {
         switch (currentToken.type) {
@@ -423,8 +423,8 @@ static bool reduceExpression(ExprStack *stack) {
         }
         last->node = NULL;
         stack->count -= 2;
-        exprStackPush(stack, (ExprStackItem){.symbol = EXPR_NONTERMINAL,
-                                            .node = node});
+        exprStackPush(
+            stack, (ExprStackItem){.symbol = EXPR_NONTERMINAL, .node = node});
         return true;
     }
 
@@ -442,8 +442,8 @@ static bool reduceExpression(ExprStack *stack) {
     left->node = NULL;
     last->node = NULL;
     stack->count -= 3;
-    exprStackPush(stack, (ExprStackItem){.symbol = EXPR_NONTERMINAL,
-                                        .node = node});
+    exprStackPush(stack,
+                  (ExprStackItem){.symbol = EXPR_NONTERMINAL, .node = node});
     return true;
 }
 
@@ -462,7 +462,7 @@ static bool reduceParentheses(ExprStack *stack) {
     if (stack->items[count - 1].symbol == EXPR_LPAREN) {
         stack->count--;
         exprStackPush(stack, (ExprStackItem){.symbol = EXPR_NONTERMINAL,
-                                            .node = createUnitNode()});
+                                             .node = createUnitNode()});
         return true;
     }
 
@@ -475,8 +475,8 @@ static bool reduceParentheses(ExprStack *stack) {
     astNode *node = stack->items[count - 1].node;
     stack->items[count - 1].node = NULL;
     stack->count -= 2;
-    exprStackPush(stack, (ExprStackItem){.symbol = EXPR_NONTERMINAL,
-                                        .node = node});
+    exprStackPush(stack,
+                  (ExprStackItem){.symbol = EXPR_NONTERMINAL, .node = node});
     return true;
 }
 
@@ -492,8 +492,8 @@ static astNode *parseExpressionFromValue(astNode *firstValue) {
 
     /** used when a statement already read its first name */
     if (firstValue != NULL) {
-        exprStackPush(&stack, (ExprStackItem){.symbol = EXPR_VALUE,
-                                              .node = firstValue});
+        exprStackPush(
+            &stack, (ExprStackItem){.symbol = EXPR_VALUE, .node = firstValue});
     }
 
     size_t openParens = 0;
@@ -546,8 +546,7 @@ static astNode *parseExpressionFromValue(astNode *firstValue) {
             }
         } else if (action == PREC_ACCEPT) {
             /** only $ E is a complete expression */
-            if (stack.count != 2 ||
-                stack.items[1].symbol != EXPR_NONTERMINAL) {
+            if (stack.count != 2 || stack.items[1].symbol != EXPR_NONTERMINAL) {
                 syntaxError("expected expression");
                 break;
             }
@@ -567,8 +566,263 @@ static astNode *parseExpressionFromValue(astNode *firstValue) {
 }
 
 /** @brief Parses an expression from the current token. */
-static astNode *parseExpression(void) {
-    return parseExpressionFromValue(NULL);
+static astNode *parseExpression(void) { return parseExpressionFromValue(NULL); }
+
+/** @brief Parses an indented block.
+ *  @param parentIndent Indent of its header.
+ */
+static astNode *parseBlock(size_t parentIndent);
+
+/**
+ * @brief Parses val or var.
+ * @param isConstant True for val, false for var.
+ * @return Variable AST, or NULL on error.
+ */
+static astNode *parseVarDef(bool isConstant) {
+    if (!advance()) {
+        return NULL;
+    }
+    if (currentToken.type != TOKEN_IDENTIFIER) {
+        syntaxError("expected variable name");
+        return NULL;
+    }
+
+    char *name = copyName();
+    if (!advance()) {
+        free(name);
+        return NULL;
+    }
+
+    /** optional : Type */
+    varType type = UNKNOWN;
+    if (currentToken.type == TOKEN_COLON) {
+        if (!advance() || !parseType(&type)) {
+            free(name);
+            return NULL;
+        }
+    }
+    if (!match(TOKEN_ASSIGN, "expected '=' after variable name")) {
+        free(name);
+        return NULL;
+    }
+
+    astNode *value = parseExpression();
+    if (value == NULL) {
+        free(name);
+        return NULL;
+    }
+    astNode *node = createVarDefNode(name, isConstant, type, value);
+    if (node == NULL) {
+        free(name);
+        freeAst(value);
+    }
+    return node;
+}
+
+/** @brief Parses a return statement.
+ *  @return Return AST, or NULL on error.
+ */
+static astNode *parseReturn(void) {
+    if (!advance()) {
+        return NULL;
+    }
+    /** return without a value is allowed for Unit functions */
+    if (currentToken.type == TOKEN_NEWLINE ||
+        currentToken.type == TOKEN_SEMICOLON ||
+        currentToken.type == TOKEN_EOF) {
+        return createReturnNode(NULL);
+    }
+    astNode *value = parseExpression();
+    if (value == NULL) {
+        return NULL;
+    }
+    return createReturnNode(value);
+}
+
+/**
+ * @brief Parses an if statement and its branches.
+ * @param indent Indent of the if line.
+ * @return If AST, or NULL on error.
+ */
+static astNode *parseIf(size_t indent) {
+    if (!match(TOKEN_KW_IF, "expected 'if'")) {
+        return NULL;
+    }
+
+    astNode *condition = parseExpression();
+    if (condition == NULL) {
+        return NULL;
+    }
+    if (!match(TOKEN_KW_THEN, "expected 'then'") ||
+        !match(TOKEN_NEWLINE, "expected newline after 'then'")) {
+        freeAst(condition);
+        return NULL;
+    }
+
+    astNode *thenBlock = parseBlock(indent);
+    if (thenBlock == NULL) {
+        freeAst(condition);
+        return NULL;
+    }
+
+    astNode *elseBlock = NULL;
+    /** else must align with if */
+    if (currentToken.type == TOKEN_KW_ELSE && currentToken.startsLogicalLine &&
+        currentToken.indent == indent) {
+        if (!advance()) {
+            freeAst(condition);
+            freeAst(thenBlock);
+            return NULL;
+        }
+
+        if (currentToken.type == TOKEN_KW_IF) {
+            /** else if is stored as an if inside the else block */
+            astNode *nested = parseIf(indent);
+            if (nested != NULL) {
+                elseBlock = createBlockNode();
+                addStatementToBlock(elseBlock, nested);
+            }
+        } else if (match(TOKEN_NEWLINE, "expected newline after 'else'")) {
+            elseBlock = parseBlock(indent);
+        }
+        if (elseBlock == NULL) {
+            freeAst(condition);
+            freeAst(thenBlock);
+            return NULL;
+        }
+    }
+
+    astNode *node = createIfNode(condition, thenBlock, elseBlock);
+    if (node == NULL) {
+        freeAst(condition);
+        freeAst(thenBlock);
+        freeAst(elseBlock);
+    }
+    return node;
+}
+
+/**
+ * @brief Parses one statement.
+ * @param indent Indent of its line.
+ * @return Statement AST, or NULL on error.
+ */
+static astNode *parseStatement(size_t indent) {
+    switch (currentToken.type) {
+    case TOKEN_KW_VAL:
+        return parseVarDef(true);
+    case TOKEN_KW_VAR:
+        return parseVarDef(false);
+    case TOKEN_KW_RETURN:
+        return parseReturn();
+    case TOKEN_KW_IF:
+        return parseIf(indent);
+    case TOKEN_IDENTIFIER: {
+        /** check if name starts an assignment or expression */
+        char *name = copyName();
+        if (!advance()) {
+            free(name);
+            return NULL;
+        }
+        if (currentToken.type == TOKEN_ASSIGN) {
+            if (!advance()) {
+                free(name);
+                return NULL;
+            }
+            astNode *value = parseExpression();
+            if (value == NULL) {
+                free(name);
+                return NULL;
+            }
+            astNode *node = createAssignNode(name, value);
+            if (node == NULL) {
+                free(name);
+                freeAst(value);
+            }
+            return node;
+        }
+        astNode *first = parseIdentifierValue(name);
+        if (first == NULL) {
+            return NULL;
+        }
+        return parseExpressionFromValue(first);
+    }
+    default:
+        /** a plain expression can also be a statement */
+        return parseExpression();
+    }
+}
+
+/**
+ * @brief Parses statements at the same indentation.
+ * @param parentIndent Indent of the function/if header.
+ * @return Block AST, or NULL on error.
+ */
+static astNode *parseBlock(size_t parentIndent) {
+    if (!currentToken.startsLogicalLine ||
+        currentToken.indent <= parentIndent) {
+        syntaxError("expected indented block");
+        return NULL;
+    }
+
+    size_t indent = currentToken.indent;
+    astNode *block = createBlockNode();
+    bool afterSemicolon = false;
+
+    while (currentToken.type != TOKEN_EOF) {
+        if (currentToken.startsLogicalLine) {
+            if (currentToken.indent < indent) {
+                break;
+            }
+            if (currentToken.indent != indent) {
+                syntaxError("unexpected indentation");
+                break;
+            }
+        } else if (!afterSemicolon) {
+            syntaxError("expected new statement line");
+            break;
+        }
+
+        astNode *statement = parseStatement(indent);
+        if (statement == NULL) {
+            break;
+        }
+        addStatementToBlock(block, statement);
+
+        /** if consumes its own lines and blocks */
+        if (statement->type == AST_IF) {
+            afterSemicolon = false;
+            continue;
+        }
+
+        if (currentToken.type == TOKEN_NEWLINE) {
+            if (!advance()) {
+                break;
+            }
+            afterSemicolon = false;
+        } else if (currentToken.type == TOKEN_SEMICOLON) {
+            if (!advance()) {
+                break;
+            }
+            if (currentToken.type == TOKEN_NEWLINE ||
+                currentToken.type == TOKEN_EOF) {
+                syntaxError("expected statement after ';'");
+                break;
+            }
+            afterSemicolon = true;
+        } else if (currentToken.type != TOKEN_EOF) {
+            syntaxError("expected end of statement");
+            break;
+        }
+    }
+
+    if (ERRCODE == 0 && block->data.block.count == 0) {
+        syntaxError("empty block");
+    }
+    if (ERRCODE != 0) {
+        freeAst(block);
+        return NULL;
+    }
+    return block;
 }
 
 /**
@@ -615,28 +869,37 @@ static astNode *parseFunctionDef(bool isMain) {
         return NULL;
     }
 
-    /** function body = expression */
-    astNode *body = parseExpression();
+    /** newline -> block, otherwise a single expression */
+    bool isBlock = currentToken.type == TOKEN_NEWLINE;
+    astNode *body = NULL;
+    if (isBlock) {
+        if (advance()) {
+            body = parseBlock(0);
+        }
+    } else {
+        body = parseExpression();
+    }
     if (body == NULL) {
         freeParameters(params, paramCount);
         free(name);
         return NULL;
     }
 
-    /** body must end here */
-    if (currentToken.type != TOKEN_NEWLINE && currentToken.type != TOKEN_EOF) {
-        syntaxError("expected end of function body");
-        freeAst(body);
-        freeParameters(params, paramCount);
-        free(name);
-        return NULL;
-    }
-
-    if (currentToken.type == TOKEN_NEWLINE && !advance()) {
-        freeAst(body);
-        freeParameters(params, paramCount);
-        free(name);
-        return NULL;
+    if (!isBlock) {
+        if (currentToken.type != TOKEN_NEWLINE &&
+            currentToken.type != TOKEN_EOF) {
+            syntaxError("expected end of function body");
+            freeAst(body);
+            freeParameters(params, paramCount);
+            free(name);
+            return NULL;
+        }
+        if (currentToken.type == TOKEN_NEWLINE && !advance()) {
+            freeAst(body);
+            freeParameters(params, paramCount);
+            free(name);
+            return NULL;
+        }
     }
 
     /** build function AST */
