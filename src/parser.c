@@ -108,48 +108,6 @@ static bool parseProlog(void) {
 }
 
 /**
- * @brief Parses an optional @main annotation.
- * @param isMain Set to true if @main is present.
- * @return True if valid or missing, false on error.
- */
-static bool parseMainAnnotation(bool *isMain) {
-    *isMain = false;
-
-    /** no annotation */
-    if (currentToken.type != TOKEN_AT) {
-        return true;
-    }
-
-    size_t atLine = currentToken.line;
-    size_t atColumn = currentToken.column;
-
-    if (!advance()) {
-        return false;
-    }
-
-    /** check @main with no space */
-    if (currentToken.type != TOKEN_IDENTIFIER ||
-        strcmp(currentToken.attribute.text.data, "main") != 0 ||
-        currentToken.line != atLine || currentToken.column != atColumn + 1) {
-        syntaxError("expected '@main' without whitespace");
-        return false;
-    }
-
-    *isMain = true;
-
-    if (!advance()) {
-        return false;
-    }
-
-    /** @main may be on its own line */
-    if (currentToken.type == TOKEN_NEWLINE) {
-        return advance();
-    }
-
-    return true;
-}
-
-/**
  * @brief Reads a type keyword.
  * @param type Stores the parsed type.
  * @return True on success, false on error.
@@ -859,6 +817,48 @@ static astNode *parseBlock(size_t parentIndent) {
         return NULL;
     }
     return block;
+}
+
+/**
+ * @brief Parses an optional @main annotation.
+ * @param isMain Set to true if @main is present.
+ * @return True if valid or missing, false on error.
+ */
+static bool parseMainAnnotation(bool *isMain) {
+    *isMain = false;
+
+    /** no annotation */
+    if (currentToken.type != TOKEN_AT) {
+        return true;
+    }
+
+    size_t atLine = currentToken.line;
+    size_t atColumn = currentToken.column;
+
+    if (!advance()) {
+        return false;
+    }
+
+    /** check @main with no space */
+    if (currentToken.type != TOKEN_IDENTIFIER ||
+        strcmp(currentToken.attribute.text.data, "main") != 0 ||
+        currentToken.line != atLine || currentToken.column != atColumn + 1) {
+        syntaxError("expected '@main' without whitespace");
+        return false;
+    }
+
+    *isMain = true;
+
+    if (!advance()) {
+        return false;
+    }
+
+    /** @main may be on its own line */
+    if (currentToken.type == TOKEN_NEWLINE) {
+        return advance();
+    }
+
+    return true;
 }
 
 /**
