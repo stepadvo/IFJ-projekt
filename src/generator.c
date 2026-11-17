@@ -150,6 +150,18 @@ codeGenState *codeGenInit() {
         "LABEL readDouble$nil\n"
         // if the result or READ is nil
         "PUSHS int@0\n"
+        "RETURN\n"
+
+        // function toStr(Any) -> String variant toStr(Bool) -> String
+        // this fucntion is the variant, where the parameter can only be bool
+        // other variants are handeled by inserting the instructions inline
+        "LABEL toStr\n"
+        "PUSHS bool@true\n"
+        "JUMPIFNEQS toStr$false\n"
+        "PUSHS string@true\n"
+        "RETURN\n"
+        "LABEL toStr$false\n"
+        "PUSHS string@false\n"
         "RETURN\n";
 
     static codeGenState state = {.firstBuf = NULL,
@@ -889,26 +901,23 @@ int codeGenStmtBinOp(astNode *binOp, codeGenBufNode *buffer) {
     IFJ_GEN_TRY(codeGenStatement(binOp->data.binop.right, buffer, true), -1);
 
     // generate the operation
-    TokenType type;
-    switch (type) {
-        /*
-         //TODO install the correct cases after ast is updated
-    case add:
+    switch (binOp->data.binop.op) {
+    case PLUS:
         IFJ_GEN_TRY(codeGenInsertTxt("ADDS\n", buffer), -1);
         break;
-    case sub:
+    case MINUS:
         IFJ_GEN_TRY(codeGenInsertTxt("SUBS\n", buffer), -1);
         break;
-    case mul:
+    case MULTIPLY:
         IFJ_GEN_TRY(codeGenInsertTxt("MULS\n", buffer), -1);
         break;
-    case div:
+    case DIVIDE:
         IFJ_GEN_TRY(codeGenInsertTxt("DIVS\n", buffer), -1);
         break;
-    case idiv:
+    case I_DIVIDE:
         IFJ_GEN_TRY(codeGenInsertTxt("IDIVS\n", buffer), -1);
         break;
-    case concat:
+    case CONCATENATION:
         IFJ_GEN_TRY(codeGenInsertTxt("POPS GF@G1\n"
                                      "POPS GF@G2\n"
                                      "CONCAT GF@G2 GF@G2 GF@G1\n"
@@ -916,36 +925,39 @@ int codeGenStmtBinOp(astNode *binOp, codeGenBufNode *buffer) {
                                      buffer),
                     -1);
         break;
-    case equation:
+    case EQUAL:
         IFJ_GEN_TRY(codeGenInsertTxt("EQS\n", buffer), -1);
         break;
-    case less:
+    case NOT_EQUAL:
+        IFJ_GEN_TRY(codeGenInsertTxt("EQS\n"
+                                     "NOTS\n",
+                                     buffer),
+                    -1);
+        break;
+    case LESS:
         IFJ_GEN_TRY(codeGenInsertTxt("LTS\n", buffer), -1);
         break;
-    case greater:
+    case GREATER:
         IFJ_GEN_TRY(codeGenInsertTxt("GTS\n", buffer), -1);
         break;
-    case lesseq:
+    case LESS_EQUAL:
         IFJ_GEN_TRY(codeGenInsertTxt("GTS\n"
                                      "NOTS\n",
                                      buffer),
                     -1);
         break;
-    case greateq:
+    case GREATER_EQUAL:
         IFJ_GEN_TRY(codeGenInsertTxt("LTS\n"
                                      "NOTS\n",
                                      buffer),
                     -1);
         break;
-    case and:
+    case AND:
         IFJ_GEN_TRY(codeGenInsertTxt("ANDS\n", buffer), -1);
         break;
-    case or:
+    case OR:
         IFJ_GEN_TRY(codeGenInsertTxt("ORS\n", buffer), -1);
         break;
-    */
-    default:
-        GEN_CHECK_PRINT(false, -1, "Unsupported binary operation\n");
     }
     return 0;
 }
@@ -1079,9 +1091,8 @@ int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer) {
     const char *name = funcCall->data.funcCall.funcName;
     if (strcmp(name, "print") == 0) {
         // one value of unknown type should be on stack
-        // find a way to be able to check whether the parameter is Unit
-        bool isUnitTemp = false;
-        if (isUnitTemp) {
+        // check if the type of parameter is UNIT
+        if (funcCall->data.funcCall.argIfAny == UNIT) {
             IFJ_GEN_TRY(codeGenInsertTxt("WRITE string@()\n", buffer), -1);
         } else {
             IFJ_GEN_TRY(codeGenInsertTxt("POPS GF@G1\n"
@@ -1100,9 +1111,8 @@ int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer) {
         return 0;
     }
     if (strcmp(name, "toStr") == 0) {
-        // TODO need to know, what data type is the parameter
-        varType typeTemp = INT;
-        switch (typeTemp) {
+        // decide on what to use depending on the parameter typ
+        switch (funcCall->data.funcCall.argIfAny) {
         case INT:
             IFJ_GEN_TRY(codeGenInsertTxt("INT2STRS\n", buffer), -1);
             break;
@@ -1112,7 +1122,9 @@ int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer) {
         case STRING:
             return 0; // nothing needs to change, keep the value on stack
         case BOOL:
-            // TODO decide whether to handle by insert or a call
+            // handle by call (the function will take only a boolean as
+            // parameter)
+            return 1;
             break;
         case UNIT:
             IFJ_GEN_TRY(codeGenInsertTxt("POPS GF@void\n"
