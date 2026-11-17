@@ -379,7 +379,7 @@ TEST_F(SymTableTest, LocalVarFunctions_NoActiveFunction) {
     EXPECT_EQ(symTableInsertVar("x", INT, false), 2);
 
     // Find variable across table
-    varData v1 = symTableFindVar("x");
+    varData v1 = symTableFindVar("x", NULL);
     EXPECT_EQ(v1.id, nullptr);
     EXPECT_FALSE(v1.isConst); // returns false when no function active
 
@@ -525,14 +525,14 @@ TEST_F(SymTableTest, FindVar_WholeTable) {
     ASSERT_EQ(symTableInsertVar("myVar", STRING, true), 0);
 
     // Existent variable
-    varData found = symTableFindVar("myVar");
+    varData found = symTableFindVar("myVar", NULL);
     ASSERT_NE(found.id, nullptr);
     EXPECT_STREQ(found.id, "myVar");
     EXPECT_EQ(found.dataType, STRING);
     EXPECT_TRUE(found.isConst);
 
     // Non-existent variable
-    varData notFound = symTableFindVar("nonExistent");
+    varData notFound = symTableFindVar("nonExistent", NULL);
     EXPECT_EQ(notFound.id, nullptr);
     EXPECT_EQ(notFound.dataType, UNKNOWN);
     EXPECT_TRUE(notFound.isConst);
