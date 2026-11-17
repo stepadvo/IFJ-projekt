@@ -34,7 +34,8 @@ static const char *typeName(varType type) {
 }
 
 /** @brief Converts token types to their actual enum names for debugging. */
-static const char *tokenName(TokenType unopType, astBinopType binopType, bool isBinop) {
+static const char *tokenName(TokenType unopType, astBinopType binopType,
+                             bool isBinop) {
     if (isBinop) {
         switch (unopType) {
         case TOKEN_INVALID:
@@ -145,7 +146,7 @@ static const char *tokenName(TokenType unopType, astBinopType binopType, bool is
             return "UNKNOWN_TOKEN";
         }
     } else {
-        switch(binopType) {
+        switch (binopType) {
         case PLUS:
             return "TOKEN_PLUS";
         case CONCATENATION:
@@ -181,7 +182,8 @@ static const char *tokenName(TokenType unopType, astBinopType binopType, bool is
 }
 
 /** @brief Returns the symbol used in the source for an operator token. */
-static const char *operatorSymbol(TokenType unopType, astBinopType binopType, bool isBinop) {
+static const char *operatorSymbol(TokenType unopType, astBinopType binopType,
+                                  bool isBinop) {
     if (!isBinop) {
         switch (unopType) {
         case TOKEN_ASSIGN:
@@ -218,7 +220,7 @@ static const char *operatorSymbol(TokenType unopType, astBinopType binopType, bo
             return "?!";
         }
     } else {
-        switch(binopType) {
+        switch (binopType) {
         case PLUS: /**< Plus: "+". */
             return "+";
         case CONCATENATION: /**< Concatenation: "[str] + [str]" */
@@ -379,12 +381,14 @@ static void printNodeSummary(const astNode *node) {
         break;
 
     case AST_BINOP:
-        printf("BinOp %s [%s]", operatorSymbol((TokenType){0}, node->data.binop.op, true),
+        printf("BinOp %s [%s]",
+               operatorSymbol((TokenType){0}, node->data.binop.op, true),
                tokenName((TokenType){0}, node->data.binop.op, true));
         break;
 
     case AST_UNOP:
-        printf("UnOp %s [%s]", operatorSymbol(node->data.unop.op, (astBinopType){0}, false),
+        printf("UnOp %s [%s]",
+               operatorSymbol(node->data.unop.op, (astBinopType){0}, false),
                tokenName(node->data.unop.op, (astBinopType){0}, false));
         break;
 
@@ -410,7 +414,8 @@ static void printNodeSummary(const astNode *node) {
             fputs("Literal Unit: ()", stdout);
             break;
         default:
-            printf("Literal [%s]", tokenName(node->data.literal.litType, (astBinopType){0}, false));
+            printf("Literal [%s]", tokenName(node->data.literal.litType,
+                                             (astBinopType){0}, false));
             break;
         }
         break;
