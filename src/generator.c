@@ -124,7 +124,34 @@ codeGenState *codeGenInit() {
         "POPFRAME\n"
         "RETURN\n"
         "LABEL subStr$FAIL\n"
-        "EXIT int@40\n";
+        "EXIT int@40\n"
+
+        // function readInt() -> Int
+        "LABEL readInt\n"
+        "READ GF@G1 int\n"
+        "TYPE GF@G2 GF@G1\n"
+        "JUMPIFNEQ readInt$nil GF@G1 string@nil\n"
+        // if the result of READ isn't nil
+        "PUSHS GF@G1\n"
+        "RETURN\n"
+        "LABEL readInt$nil\n"
+        // if the result or READ is nil
+        "PUSHS int@0\n"
+        "RETURN\n"
+
+        // function readDouble() -> Double
+        "LABEL readDouble\n"
+        "READ GF@G1 float\n"
+        "TYPE GF@G2 GF@G1\n"
+        "JUMPIFNEQ readDouble$nil GF@G1 string@nil\n"
+        // if the result of READ isn't nil
+        "PUSHS GF@G1\n"
+        "RETURN\n"
+        "LABEL readDouble$nil\n"
+        // if the result or READ is nil
+        "PUSHS int@0\n"
+        "RETURN\n";
+
     static codeGenState state = {.firstBuf = NULL,
                                  .lastBuf = NULL,
                                  .bufsCreated = 0,
@@ -1067,22 +1094,6 @@ int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer) {
     if (strcmp(name, "readLine") == 0) {
         // no values should be on stack
         IFJ_GEN_TRY(codeGenInsertTxt("READ GF@G1 string\n"
-                                     "PUSHS GF@G1\n",
-                                     buffer),
-                    -1);
-        return 0;
-    }
-    if (strcmp(name, "readInt") == 0) {
-        // no values should be on stack
-        IFJ_GEN_TRY(codeGenInsertTxt("READ GF@G1 int\n"
-                                     "PUSHS GF@G1\n",
-                                     buffer),
-                    -1);
-        return 0;
-    }
-    if (strcmp(name, "readDouble") == 0) {
-        // no values should be on stack
-        IFJ_GEN_TRY(codeGenInsertTxt("READ GF@G1 float\n"
                                      "PUSHS GF@G1\n",
                                      buffer),
                     -1);
