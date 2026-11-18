@@ -211,6 +211,15 @@ astNode *createIdentifierNode(char *name) {
     return node;
 }
 
+astNode *createInt2DoubleNode(astNode *convertee) {
+    if (convertee == NULL)
+        return NULL;
+
+    astNode *node = newNode(AST_INT2DOUBLE);
+    node->data.int2doubleConv.value = convertee;
+    return node;
+}
+
 astNode *createLiteralNode(Token *token) {
     if (token == NULL || (token->type != TOKEN_INT_LITERAL &&
                           token->type != TOKEN_DOUBLE_LITERAL &&
@@ -327,6 +336,9 @@ void freeAst(astNode *node) {
         break;
     case AST_IDENTIFIER:
         free(node->data.identifier.name);
+        break;
+    case AST_INT2DOUBLE:
+        free(node->data.int2doubleConv.value);
         break;
     }
 
