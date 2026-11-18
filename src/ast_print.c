@@ -33,225 +33,53 @@ static const char *typeName(varType type) {
     }
 }
 
-/** @brief Converts token types to their actual enum names for debugging. */
-static const char *tokenName(TokenType unopType, astBinopType binopType,
-                             bool isBinop) {
-    if (isBinop) {
-        switch (unopType) {
-        case TOKEN_INVALID:
-            return "TOKEN_INVALID";
-        case TOKEN_EOF:
-            return "TOKEN_EOF";
-        case TOKEN_NEWLINE:
-            return "TOKEN_NEWLINE";
-        case TOKEN_IDENTIFIER:
-            return "TOKEN_IDENTIFIER";
-        case TOKEN_INT_LITERAL:
-            return "TOKEN_INT_LITERAL";
-        case TOKEN_DOUBLE_LITERAL:
-            return "TOKEN_DOUBLE_LITERAL";
-        case TOKEN_STRING_LITERAL:
-            return "TOKEN_STRING_LITERAL";
-        case TOKEN_BOOL_LITERAL:
-            return "TOKEN_BOOL_LITERAL";
-        case TOKEN_KW_DEF:
-            return "TOKEN_KW_DEF";
-        case TOKEN_KW_DO:
-            return "TOKEN_KW_DO";
-        case TOKEN_KW_DOUBLE:
-            return "TOKEN_KW_DOUBLE";
-        case TOKEN_KW_ELSE:
-            return "TOKEN_KW_ELSE";
-        case TOKEN_KW_IF:
-            return "TOKEN_KW_IF";
-        case TOKEN_KW_IMPORT:
-            return "TOKEN_KW_IMPORT";
-        case TOKEN_KW_INT:
-            return "TOKEN_KW_INT";
-        case TOKEN_KW_RETURN:
-            return "TOKEN_KW_RETURN";
-        case TOKEN_KW_STRING:
-            return "TOKEN_KW_STRING";
-        case TOKEN_KW_THEN:
-            return "TOKEN_KW_THEN";
-        case TOKEN_KW_UNIT:
-            return "TOKEN_KW_UNIT";
-        case TOKEN_KW_VAL:
-            return "TOKEN_KW_VAL";
-        case TOKEN_KW_VAR:
-            return "TOKEN_KW_VAR";
-        case TOKEN_KW_WHILE:
-            return "TOKEN_KW_WHILE";
-        case TOKEN_KW_BOOLEAN:
-            return "TOKEN_KW_BOOLEAN";
-        case TOKEN_KW_FOR:
-            return "TOKEN_KW_FOR";
-        case TOKEN_KW_CASE:
-            return "TOKEN_KW_CASE";
-        case TOKEN_KW_CLASS:
-            return "TOKEN_KW_CLASS";
-        case TOKEN_KW_EXTENSION:
-            return "TOKEN_KW_EXTENSION";
-        case TOKEN_KW_LIST:
-            return "TOKEN_KW_LIST";
-        case TOKEN_KW_MATCH:
-            return "TOKEN_KW_MATCH";
-        case TOKEN_KW_TYPE:
-            return "TOKEN_KW_TYPE";
-        case TOKEN_ASSIGN:
-            return "TOKEN_ASSIGN";
-        case TOKEN_PLUS:
-            return "TOKEN_PLUS";
-        case TOKEN_MINUS:
-            return "TOKEN_MINUS";
-        case TOKEN_MULTIPLY:
-            return "TOKEN_MULTIPLY";
-        case TOKEN_DIVIDE:
-            return "TOKEN_DIVIDE";
-        case TOKEN_EQUAL:
-            return "TOKEN_EQUAL";
-        case TOKEN_NOT_EQUAL:
-            return "TOKEN_NOT_EQUAL";
-        case TOKEN_LESS:
-            return "TOKEN_LESS";
-        case TOKEN_LESS_EQUAL:
-            return "TOKEN_LESS_EQUAL";
-        case TOKEN_GREATER:
-            return "TOKEN_GREATER";
-        case TOKEN_GREATER_EQUAL:
-            return "TOKEN_GREATER_EQUAL";
-        case TOKEN_NOT:
-            return "TOKEN_NOT";
-        case TOKEN_AND:
-            return "TOKEN_AND";
-        case TOKEN_OR:
-            return "TOKEN_OR";
-        case TOKEN_LEFT_ARROW:
-            return "TOKEN_LEFT_ARROW";
-        case TOKEN_LPAREN:
-            return "TOKEN_LPAREN";
-        case TOKEN_RPAREN:
-            return "TOKEN_RPAREN";
-        case TOKEN_COLON:
-            return "TOKEN_COLON";
-        case TOKEN_COMMA:
-            return "TOKEN_COMMA";
-        case TOKEN_SEMICOLON:
-            return "TOKEN_SEMICOLON";
-        case TOKEN_DOT:
-            return "TOKEN_DOT";
-        case TOKEN_AT:
-            return "TOKEN_AT";
-        default:
-            return "UNKNOWN_TOKEN";
-        }
-    } else {
-        switch (binopType) {
-        case PLUS:
-            return "TOKEN_PLUS";
-        case CONCATENATION:
-            return "TOKEN_CONCATENATION";
-        case MINUS:
-            return "TOKEN_MINUS";
-        case MULTIPLY:
-            return "TOKEN_MULTIPLY";
-        case DIVIDE:
-            return "TOKEN_DIVIDE";
-        case I_DIVIDE:
-            return "TOKEN_I_DIVIDE";
-        case EQUAL:
-            return "TOKEN_EQUAL";
-        case NOT_EQUAL:
-            return "TOKEN_NOT_EQUAL";
-        case LESS:
-            return "TOKEN_LESS";
-        case LESS_EQUAL:
-            return "TOKEN_EQUAL";
-        case GREATER:
-            return "TOKEN_GREATER";
-        case GREATER_EQUAL:
-            return "TOKEN_GREATER_EQUAL";
-        case AND:
-            return "TOKEN_AND";
-        case OR:
-            return "TOKEN_OR";
-        default:
-            return "?!";
-        }
+/** @brief Returns the source symbol for a unary operator. */
+static const char *unopSymbol(astUnopType unopType) {
+    switch (unopType) {
+    case NOT:
+        return "!";
+    case UNARY_PLUS:
+        return "+";
+    case UNARY_MINUS:
+        return "-";
+    default:
+        return "?!";
     }
 }
 
-/** @brief Returns the symbol used in the source for an operator token. */
-static const char *operatorSymbol(TokenType unopType, astBinopType binopType,
-                                  bool isBinop) {
-    if (!isBinop) {
-        switch (unopType) {
-        case TOKEN_ASSIGN:
-            return "=";
-        case TOKEN_PLUS:
-            return "+";
-        case TOKEN_MINUS:
-            return "-";
-        case TOKEN_MULTIPLY:
-            return "*";
-        case TOKEN_DIVIDE:
-            return "/";
-        case TOKEN_EQUAL:
-            return "==";
-        case TOKEN_NOT_EQUAL:
-            return "!=";
-        case TOKEN_LESS:
-            return "<";
-        case TOKEN_LESS_EQUAL:
-            return "<=";
-        case TOKEN_GREATER:
-            return ">";
-        case TOKEN_GREATER_EQUAL:
-            return ">=";
-        case TOKEN_NOT:
-            return "!";
-        case TOKEN_AND:
-            return "&&";
-        case TOKEN_OR:
-            return "||";
-        case TOKEN_LEFT_ARROW:
-            return "<-";
-        default:
-            return "?!";
-        }
-    } else {
-        switch (binopType) {
-        case PLUS: /**< Plus: "+". */
-            return "+";
-        case CONCATENATION: /**< Concatenation: "[str] + [str]" */
-            return "+";
-        case MINUS: /**< Minus: "-". */
-            return "-";
-        case MULTIPLY: /**< Multiplication: "*". */
-            return "*";
-        case DIVIDE: /**< Division: "[float] / [float]". */
-            return "/";
-        case I_DIVIDE: /**< Integer divison: "[int] / [int]" */
-            return "/";
-        case EQUAL: /**< Equality: "==". */
-            return "==";
-        case NOT_EQUAL: /**< Inequality: "!=". */
-            return "!=";
-        case LESS: /**< Less than: "<". */
-            return "<";
-        case LESS_EQUAL: /**< Less than or equal to: "<=". */
-            return "<=";
-        case GREATER: /**< Greater than: ">". */
-            return ">";
-        case GREATER_EQUAL: /**< Greater than or equal to: ">=". */
-            return ">=";
-        case AND: /**< Logical conjunction: "&&". */
-            return "&&";
-        case OR: /**< Logical disjunction: "||". */
-            return "||";
-        default:
-            return "?!";
-        }
+/** @brief Returns the source symbol for a binary operator. */
+static const char *binopSymbol(astBinopType binopType) {
+    switch (binopType) {
+    case PLUS:
+        return "+";
+    case CONCATENATION:
+        return "+";
+    case MINUS:
+        return "-";
+    case MULTIPLY:
+        return "*";
+    case DIVIDE:
+        return "/";
+    case I_DIVIDE:
+        return "/";
+    case EQUAL:
+        return "==";
+    case NOT_EQUAL:
+        return "!=";
+    case LESS:
+        return "<";
+    case LESS_EQUAL:
+        return "<=";
+    case GREATER:
+        return ">";
+    case GREATER_EQUAL:
+        return ">=";
+    case AND:
+        return "&&";
+    case OR:
+        return "||";
+    default:
+        return "?!";
     }
 }
 
@@ -381,15 +209,11 @@ static void printNodeSummary(const astNode *node) {
         break;
 
     case AST_BINOP:
-        printf("BinOp %s [%s]",
-               operatorSymbol((TokenType){0}, node->data.binop.op, true),
-               tokenName((TokenType){0}, node->data.binop.op, true));
+        printf("BinOp (%s)", binopSymbol(node->data.binop.op));
         break;
 
     case AST_UNOP:
-        printf("UnOp %s [%s]",
-               operatorSymbol(node->data.unop.op, (astBinopType){0}, false),
-               tokenName(node->data.unop.op, (astBinopType){0}, false));
+        printf("UnOp (%s)", unopSymbol(node->data.unop.op));
         break;
 
     case AST_LITERAL:
@@ -414,8 +238,6 @@ static void printNodeSummary(const astNode *node) {
             fputs("Literal Unit: ()", stdout);
             break;
         default:
-            printf("Literal [%s]", tokenName(node->data.literal.litType,
-                                             (astBinopType){0}, false));
             break;
         }
         break;
