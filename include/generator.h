@@ -20,6 +20,15 @@
 #include "ast.h"
 #include <stdbool.h>
 
+typedef enum {
+    FUN_ORD,
+    FUN_SUBSTR,
+    FUN_READINT,
+    FUN_READDOUBLE,
+    FUN_BOOLTOSTR,
+    FUN_NUM
+} builtinFuns;
+
 /** node holding one 4kiB sectioin of text for generated code */
 typedef struct bufSection {
     char data[IFJ_GEN_BUF_SIZE]; /** for holding the generated text */
@@ -39,7 +48,6 @@ typedef struct codeGenBufNode {
     int labelNum;  /** the number given to a statement needing labels so the
                       label names are identical (works if one buffer is analogous
                       to one source code block) */
-    const int bufNum; /** number of the buffer */
 
     struct codeGenBufNode *nextBuf;
     struct codeGenBufNode *prevBuf;
@@ -67,8 +75,11 @@ typedef struct {
 
     char mainFunName[IFJ_GEN_MAX_ID_LEN]; /** ptr to the name of the main
                                              function in the ast */
-    char *builtinFuns; /** ptr to a string containing the code for builtin
-                          functions, that are called and not inserted in place*/
+    char *builtinFuns[FUN_NUM]; /** ptrs to strings containing the code for
+                                   builtin functions, that are called and not
+                                   inserted in place */
+
+    bool builtinNeeded[FUN_NUM];
 } codeGenState;
 
 /*
@@ -415,7 +426,8 @@ int codeGenStmtBlock(astNode *block, codeGenBufNode *buffer,
  * it is assumed, that putting the parameters on stack has been already
  * generated the generated function will leave its result on stack
  */
-int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer);
+int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer,
+                          codeGenState *state);
 
 /**
  * @brief assembles the name of a variable in IFJcode26

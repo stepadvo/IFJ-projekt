@@ -44,8 +44,9 @@
 
 codeGenState *codeGenInit() {
     // the text for builtin functions
-    static char builtinCode[] =
-        "LABEL ord\n"  // function ord(value:String, index:Int)->Int and
+    // function ord(value:String, index:Int)->Int
+    static char ordBuiltin[] =
+        "LABEL ord\n"
         "POPS GF@G1\n" // GF@G1 = value
         "POPS GF@G2\n" // GF@G2 = index
 
@@ -67,9 +68,10 @@ codeGenState *codeGenInit() {
         // on fail push -1 to stack
         "LABEL ord$fail\n"
         "PUSHS INT@-1\n"
-        "RETURN\n"
+        "RETURN\n";
 
-        // function subStr(value:String, start:Int, end:Int)->String
+    // function subStr(value:String, start:Int, end:Int)->String
+    static char subStrBuiltin[] =
         "LABEL subStr\n"
         // initialize the function frame
         "CREATEFRAME\n"
@@ -123,22 +125,23 @@ codeGenState *codeGenInit() {
         "POPFRAME\n"
         "RETURN\n"
         "LABEL subStr$FAIL\n"
-        "EXIT int@40\n"
+        "EXIT int@40\n";
 
-        // function readInt() -> Int
-        "LABEL readInt\n"
-        "READ GF@G1 int\n"
-        "TYPE GF@G2 GF@G1\n"
-        "JUMPIFNEQ readInt$nil GF@G1 string@nil\n"
-        // if the result of READ isn't nil
-        "PUSHS GF@G1\n"
-        "RETURN\n"
-        "LABEL readInt$nil\n"
-        // if the result or READ is nil
-        "PUSHS int@0\n"
-        "RETURN\n"
+    // function readInt() -> Int
+    static char readIntBuiltin[] = "LABEL readInt\n"
+                                   "READ GF@G1 int\n"
+                                   "TYPE GF@G2 GF@G1\n"
+                                   "JUMPIFNEQ readInt$nil GF@G1 string@nil\n"
+                                   // if the result of READ isn't nil
+                                   "PUSHS GF@G1\n"
+                                   "RETURN\n"
+                                   "LABEL readInt$nil\n"
+                                   // if the result or READ is nil
+                                   "PUSHS int@0\n"
+                                   "RETURN\n";
 
-        // function readDouble() -> Double
+    // function readDouble() -> Double
+    static char readDoubleBuiltin[] =
         "LABEL readDouble\n"
         "READ GF@G1 float\n"
         "TYPE GF@G2 GF@G1\n"
@@ -149,26 +152,32 @@ codeGenState *codeGenInit() {
         "LABEL readDouble$nil\n"
         // if the result or READ is nil
         "PUSHS int@0\n"
-        "RETURN\n"
-
-        // function toStr(Any) -> String variant toStr(Bool) -> String
-        // this fucntion is the variant, where the parameter can only be bool
-        // other variants are handeled by inserting the instructions inline
-        "LABEL toStr\n"
-        "PUSHS bool@true\n"
-        "JUMPIFNEQS toStr$false\n"
-        "PUSHS string@true\n"
-        "RETURN\n"
-        "LABEL toStr$false\n"
-        "PUSHS string@false\n"
         "RETURN\n";
+
+    // function toStr(Any) -> String variant toStr(Bool) -> String
+    // this fucntion is the variant, where the parameter can only be bool
+    // other variants are handeled by inserting the instructions inline
+    static char toStrBuiltin[] = "LABEL toStr\n"
+                                 "PUSHS bool@true\n"
+                                 "JUMPIFNEQS toStr$false\n"
+                                 "PUSHS string@true\n"
+                                 "RETURN\n"
+                                 "LABEL toStr$false\n"
+                                 "PUSHS string@false\n"
+                                 "RETURN\n";
 
     static codeGenState state = {.firstBuf = NULL,
                                  .lastBuf = NULL,
                                  .firstFun = NULL,
                                  .lastFun = NULL,
                                  .mainFunName = "",
-                                 .builtinFuns = builtinCode};
+                                 .builtinNeeded = {false}};
+
+    state.builtinFuns[FUN_ORD] = ordBuiltin;
+    state.builtinFuns[FUN_SUBSTR] = subStrBuiltin;
+    state.builtinFuns[FUN_READINT] = readIntBuiltin;
+    state.builtinFuns[FUN_READDOUBLE] = readDoubleBuiltin;
+    state.builtinFuns[FUN_BOOLTOSTR] = toStrBuiltin;
     return &state;
 }
 
@@ -287,15 +296,23 @@ int codeGenFunction(codeGenState *state, astNode *funRoot) {
 }
 
 int codeGenOutCode(codeGenState *state) {
-    // output the file header (including the builtin functions at the end)
+    // output the file header
     int len = printf(".IFJcode26\n"
                      "DEFVAR GF@void\n"
                      "DEFVAR GF@G1\n"
                      "DEFVAR GF@G2\n"
                      "DEFVAR GF@G3\n"
                      "CALL %s\n"
-                     "EXIT int@0\n%s",
-                     state->mainFunName, state->builtinFuns);
+                     "EXIT int@0\n",
+                     state->mainFunName);
+
+    // output the needed builtin functions
+    for (int i = 0; i < FUN_NUM; i++) {
+        if (state->builtinNeeded[i] == true) {
+            puts(state->builtinFuns[i]);
+            len += strlen(state->builtinFuns[i]);
+        }
+    }
 
     // output all the functoins
     outBufNode *next;
@@ -802,7 +819,7 @@ int codeGenStmtFuncCall(astNode *funcCall, codeGenBufNode *buffer,
                     -1);
     }
 
-    int builtin = codeGenBuiltinFunCall(funcCall, buffer);
+    int builtin = codeGenBuiltinFunCall(funcCall, buffer, state);
     if (builtin == -1) {
         return -1;
     }
@@ -1048,7 +1065,8 @@ int codeGenStmtBlock(astNode *block, codeGenBufNode *buffer,
     return 0;
 }
 
-int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer) {
+int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer,
+                          codeGenState *state) {
     const char *name = funcCall->data.funcCall.funcName;
     if (strcmp(name, "print") == 0) {
         // one value of unknown type should be on stack
@@ -1071,6 +1089,16 @@ int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer) {
                     -1);
         return 0;
     }
+    if (strcmp(name, "readInt") == 0) {
+        // generate a call
+        state->builtinNeeded[FUN_READINT] = true;
+        return 1;
+    }
+    if (strcmp(name, "readDouble") == 0) {
+        // generate a call
+        state->builtinNeeded[FUN_READDOUBLE] = true;
+        return 1;
+    }
     if (strcmp(name, "toStr") == 0) {
         // decide on what to use depending on the parameter typ
         switch (funcCall->data.funcCall.argIfAny) {
@@ -1085,6 +1113,7 @@ int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer) {
         case BOOL:
             // handle by call (the function will take only a boolean as
             // parameter)
+            state->builtinNeeded[FUN_BOOLTOSTR] = true;
             return 1;
             break;
         case UNIT:
@@ -1112,6 +1141,16 @@ int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer) {
                                      buffer),
                     -1);
         return 0;
+    }
+    if (strcmp(name, "subStr") == 0) {
+        // generate a call
+        state->builtinNeeded[FUN_SUBSTR] = true;
+        return 1;
+    }
+    if (strcmp(name, "ord") == 0) {
+        // generate a call
+        state->builtinNeeded[FUN_ORD] = true;
+        return 1;
     }
     if (strcmp(name, "chr") == 0) {
         // one value of type int should be on stack
