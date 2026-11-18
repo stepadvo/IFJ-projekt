@@ -68,7 +68,7 @@ codeGenState *codeGenInit() {
         // on fail push -1 to stack
         "LABEL ord$fail\n"
         "PUSHS INT@-1\n"
-        "RETURN\n";
+        "RETURN\n\n";
 
     // function subStr(value:String, start:Int, end:Int)->String
     static char subStrBuiltin[] =
@@ -125,7 +125,7 @@ codeGenState *codeGenInit() {
         "POPFRAME\n"
         "RETURN\n"
         "LABEL subStr$FAIL\n"
-        "EXIT int@40\n";
+        "EXIT int@40\n\n";
 
     // function readInt() -> Int
     static char readIntBuiltin[] = "LABEL readInt\n"
@@ -138,7 +138,7 @@ codeGenState *codeGenInit() {
                                    "LABEL readInt$nil\n"
                                    // if the result or READ is nil
                                    "PUSHS int@0\n"
-                                   "RETURN\n";
+                                   "RETURN\n\n";
 
     // function readDouble() -> Double
     static char readDoubleBuiltin[] =
@@ -152,7 +152,7 @@ codeGenState *codeGenInit() {
         "LABEL readDouble$nil\n"
         // if the result or READ is nil
         "PUSHS int@0\n"
-        "RETURN\n";
+        "RETURN\n\n";
 
     // function toStr(Any) -> String variant toStr(Bool) -> String
     // this fucntion is the variant, where the parameter can only be bool
@@ -164,7 +164,7 @@ codeGenState *codeGenInit() {
                                  "RETURN\n"
                                  "LABEL toStr$false\n"
                                  "PUSHS string@false\n"
-                                 "RETURN\n";
+                                 "RETURN\n\n";
 
     static codeGenState state = {.firstBuf = NULL,
                                  .lastBuf = NULL,
@@ -233,8 +233,8 @@ int codeGenFunction(codeGenState *state, astNode *funRoot) {
     const char header[] = "LABEL %s\n"
                           "CREATEFRAME\n"
                           "PUSHFRAME\n";
-    const char singleParam[] = "DEFVAR %s$0\n"
-                               "POPS %s$0\n";
+    const char singleParam[] = "DEFVAR LF@%s$0\n"
+                               "POPS LF@%s$0\n";
     const char footer[] = "LABEL %s$return\n"
                           "POPFRAME\n"
                           "RETURN\n";
@@ -288,6 +288,8 @@ int codeGenFunction(codeGenState *state, astNode *funRoot) {
     // insert the outBuf into the state
     if (state->lastFun) {
         state->lastFun->nextBuf = outBuf;
+    } else {
+        state->firstFun = outBuf;
     }
     state->lastFun = outBuf;
 
@@ -305,7 +307,7 @@ int codeGenOutCode(codeGenState *state) {
                      "DEFVAR GF@G2\n"
                      "DEFVAR GF@G3\n"
                      "CALL %s\n"
-                     "EXIT int@0\n",
+                     "EXIT int@0\n\n",
                      state->mainFunName);
 
     // output the needed builtin functions
@@ -494,6 +496,7 @@ int codeGenOutputBuf(char *outBuf, codeGenBufNode *buffer) {
 
 int codeGenStatementArr(astNode **nodes, size_t count, codeGenBufNode *buffer,
                         codeGenState *state) {
+
     for (size_t i = 0; i < count; i++) {
         // generate all statements. By default don't leave value on stack
         // (return value should be under AST_RETURN)
@@ -528,9 +531,7 @@ int codeGenStatement(astNode *node, codeGenBufNode *buffer, bool leaveVal,
         break;
 
     case AST_FUNC_CALL:
-        if (leaveVal) {
-            IFJ_GEN_TRY(codeGenStmtFuncCall(node, buffer, leaveVal, state), -1);
-        }
+        IFJ_GEN_TRY(codeGenStmtFuncCall(node, buffer, leaveVal, state), -1);
         break;
 
     case AST_RETURN:
@@ -849,7 +850,11 @@ int codeGenStmtFuncCall(astNode *funcCall, codeGenBufNode *buffer,
 
     // if no result should be left on stack and the function will return one,
     // pop it
-    varType retType = symTableFindFun(funcCall->data.funcCall.funcName).retType;
+    funData funData = symTableFindFun(funcCall->data.funcCall.funcName);
+    GEN_CHECK_PRINT(funData.id != NULL, -1,
+                    "Function symbol %s not in symTable\n",
+                    funcCall->data.funcCall.funcName);
+    varType retType = funData.retType;
     if (!leaveVal && retType != UNIT) {
         IFJ_GEN_TRY(codeGenInsertTxt("POPS GF@void\n", buffer), -1);
     }
@@ -878,11 +883,18 @@ int codeGenStmtReturn(astNode *ret, codeGenBufNode *buffer,
 
 int codeGenStmtBinOp(astNode *binOp, codeGenBufNode *buffer,
                      codeGenState *state) {
-    // generate the 2 parameters and leave their values on stack
+    // generate the 2 parameters and leave their values on stack (convert from
+    // int to float if nescessary)
     IFJ_GEN_TRY(codeGenStatement(binOp->data.binop.left, buffer, true, state),
                 -1);
+    if (binOp->data.binop.convertLeft) {
+        IFJ_GEN_TRY(codeGenInsertTxt("INT2FLOATS\n", buffer), -1);
+    }
     IFJ_GEN_TRY(codeGenStatement(binOp->data.binop.right, buffer, true, state),
                 -1);
+    if (binOp->data.binop.convertLeft) {
+        IFJ_GEN_TRY(codeGenInsertTxt("INT2FLOATS\n", buffer), -1);
+    }
 
     // generate the operation
     switch (binOp->data.binop.op) {
@@ -983,16 +995,18 @@ int codeGenStmtLiteral(astNode *lit, codeGenBufNode *buffer) {
     char buf[IFJ_GEN_MAX_ID_LEN];
     switch (lit->data.literal.litType) {
     case TOKEN_INT_LITERAL:
-        sprintf(buf, "int@%li\n", lit->data.literal.attribute.intValue);
+        sprintf(buf, "PUSHS int@%li\n", lit->data.literal.attribute.intValue);
         break;
     case TOKEN_BOOL_LITERAL:
-        sprintf(buf, "bool@%s\n", "true");
+        sprintf(buf, "PUSHS bool@%s\n", "true");
         break;
     case TOKEN_DOUBLE_LITERAL:
-        sprintf(buf, "float@%a\n", lit->data.literal.attribute.doubleValue);
+        sprintf(buf, "PUSHS float@%a\n",
+                lit->data.literal.attribute.doubleValue);
         break;
     case TOKEN_STRING_LITERAL:
         // call a function to handle the string literal
+
         return codeGenStmtStringLit(lit->data.literal.attribute.text.data,
                                     lit->data.literal.attribute.text.length,
                                     buffer);
@@ -1015,14 +1029,15 @@ int codeGenStmtStringLit(const char *str, size_t lenght,
                          codeGenBufNode *buffer) {
     // each character can be replaced with at most 4 characters of escape
     // sequence + lenght of the prefix
-    char prefix[] = "string@";
+    char prefix[] = "PUSHS string@";
     size_t prefixLen = strlen(prefix);
-    char buf[lenght * 4 + prefixLen + 1];
+    char buf[lenght * 4 + prefixLen + 2];
 
     // insert the prefix
     strcpy(buf, prefix);
     size_t bufIdx = prefixLen;
 
+    // printf("generating literal %s\n", str);
     for (size_t i = 0; i < lenght; i++) {
         // convert the character to an escape sequence if needed
         char c = str[i];
@@ -1031,11 +1046,11 @@ int codeGenStmtStringLit(const char *str, size_t lenght,
             buf[bufIdx] = '\\';
 
             // convert to decimal
-            buf[bufIdx + 3] = c % 10;
+            buf[bufIdx + 3] = (c % 10) + '0';
             c /= 10;
-            buf[bufIdx + 2] = c % 10;
+            buf[bufIdx + 2] = (c % 10) + '0';
             c /= 10;
-            buf[bufIdx + 1] = c;
+            buf[bufIdx + 1] = c + '0';
             bufIdx += 4;
         }
         // else just copy the character
@@ -1043,6 +1058,9 @@ int codeGenStmtStringLit(const char *str, size_t lenght,
             buf[bufIdx++] = c;
         }
     }
+    // printf("generated literal %s of %lu characters\n", buf, bufIdx);
+    buf[bufIdx++] = '\n';
+    buf[bufIdx] = '\0';
 
     IFJ_GEN_TRY(codeGenInsertTxt(buf, buffer), -1);
     return 0;
@@ -1180,11 +1198,12 @@ int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer,
 const char *codeGenGetVarName(const char *id) {
     static char nameBuf[IFJ_GEN_MAX_ID_LEN];
 
-    int uniqueId;
+    static int uniqueId;
     // find the name in symTable
-    symTableFindVar(id, &uniqueId);
+    varData nameData = symTableFindVar(id, &uniqueId);
     GEN_CHECK_PRINT(nameData.id != NULL, NULL,
                     "The variable name %s not found in symtable\n", id);
+    (void)nameData;
 
     // construct the name in IFJ26
     sprintf(nameBuf, "LF@%s$%i", id, uniqueId);
