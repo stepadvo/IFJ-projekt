@@ -43,7 +43,9 @@ typedef enum {
     /**< A reference to a variable or parameter by its name. */
     AST_IDENTIFIER,
     /**< A block of statements grouped together, usually in braces. */
-    AST_BLOCK
+    AST_BLOCK,
+    /**< A convertion from INT to DOUBLE (for the generator)*/
+    AST_INT2DOUBLE
 } astNodeType;
 
 /** @brief Type of unary oparators. */
@@ -122,11 +124,6 @@ struct astNode {
             astNode *left;
             /**< The right-hand side of the operation. */
             astNode *right;
-            /**< If [int] binop [float]:
-             * ~> [float] binop [float]
-             */
-            bool convertLeft;
-            bool convertRight;
         } binop;
 
         /**
@@ -293,6 +290,14 @@ struct astNode {
             /**< The expression to return. NULL if returning nothing. */
             astNode *value;
         } returnStmt;
+
+        /**
+         * @brief A int to double convertion
+         */
+        struct {
+            /**< The expression to be converted */
+            astNode *value;
+        } int2doubleConv;
     } data;
 };
 
@@ -455,6 +460,13 @@ astNode *createAssignNode(char *name, astNode *value);
  * @return A new AST_RETURN node.
  */
 astNode *createReturnNode(astNode *value);
+
+/**
+ * @brief Creates a int to double convertion node.
+ * @param
+ * @return A new AST_INT2DOUBLE node.
+ */
+astNode *createInt2DoubleNode(astNode *convertee);
 
 /**
  * @brief Recursively frees an AST node and all its children.

@@ -5,6 +5,7 @@
  */
 
 #include "ast_print.h"
+#include "ast.h"
 #include <inttypes.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -247,6 +248,9 @@ static void printNodeSummary(const astNode *node) {
                                     ? node->data.identifier.name
                                     : "<null>");
         break;
+    case AST_INT2DOUBLE:
+        printf("INT->DOUBLE");
+        break;
 
     default:
         printf("Unknown AST node (%d)", (int)node->type);
@@ -372,6 +376,9 @@ static void printTree(const astNode *node, const char *prefix, bool isLast,
 
     case AST_LITERAL:
     case AST_IDENTIFIER:
+        break;
+    case AST_INT2DOUBLE:
+        printTree(node->data.int2doubleConv.value, next, true, "Operand");
         break;
     }
     free(next);
