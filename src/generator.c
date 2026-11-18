@@ -183,9 +183,11 @@ codeGenState *codeGenInit() {
 
 void codeGenDestruct(codeGenState *state) {
     codeGenBufNode *next;
-    for (codeGenBufNode *curr = state->firstBuf; curr != NULL; curr = next) {
+    codeGenBufNode *curr = state->firstBuf;
+    while (curr) {
         next = curr->nextBuf;
         codeGenDestructBuf(curr);
+        curr = next;
     }
     state->firstBuf = state->lastBuf = NULL;
 
@@ -216,7 +218,7 @@ int codeGenBlock(codeGenState *state, astNode *blockRoot) {
 }
 
 int codeGenFunction(codeGenState *state, astNode *funRoot) {
-    if (!funRoot) {
+    if (!funRoot || !state) {
         return 1;
     }
 
@@ -316,13 +318,17 @@ int codeGenOutCode(codeGenState *state) {
 
     // output all the functoins
     outBufNode *next;
-    for (outBufNode *curr = state->firstFun; curr != NULL; curr = next) {
+    outBufNode *curr = state->firstFun;
+    while (curr) {
         puts(curr->buf); // output the whole buffer to stdout
 
         len += curr->bufSize;
         next = curr->nextBuf;
 
-        free(curr); // free the buffers as we go
+        free(curr->buf); // free the buffers as we go
+        free(curr);
+
+        curr = next;
     }
     state->firstFun = state->lastFun = NULL;
 
@@ -331,11 +337,15 @@ int codeGenOutCode(codeGenState *state) {
 
 void codeGenDiscard(codeGenState *state) {
     outBufNode *next;
+    outBufNode *curr = state->firstFun;
 
-    for (outBufNode *curr = state->firstFun; curr != NULL; curr = next) {
+    while (curr) {
         next = curr->nextBuf;
 
-        free(curr); // free the buffers as we go
+        free(curr->buf); // free the buffers as we go
+        free(curr);
+
+        curr = next;
     }
     state->firstFun = state->lastFun = NULL;
 
@@ -390,10 +400,11 @@ void codeGenDestructBuf(codeGenBufNode *buffer) {
 
     // free all the text areas
     bufSection *nextSection;
-    for (bufSection *curr = buffer->firstSection; curr != NULL;
-         curr = nextSection) {
+    bufSection *curr = buffer->firstSection;
+    while (curr) {
         nextSection = curr->next;
         free(curr);
+        curr = nextSection;
     }
 
     free(buffer);
@@ -471,8 +482,8 @@ int codeGenOutputBuf(char *outBuf, codeGenBufNode *buffer) {
     // copy the buffer sections
     while (section) {
         memcpy(&outBuf[len], section->data, section->size);
-        section = section->next;
         len += section->size;
+        section = section->next;
     }
 
     // make sure the string ends in \0 but don't include it in the lenght

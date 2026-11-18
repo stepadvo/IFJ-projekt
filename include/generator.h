@@ -115,7 +115,7 @@ void codeGenDestruct(codeGenState *state);
  * the function works only if these conditions are met:
  *  - if the blocks contains any sub blocks, they have to be already generated
  *  - if any function is called inside the block, its return type already has to
- * be known
+ * be known and the function must be in the symbol table
  *  - no variables in the ast can have a data type as UNKNOWN or ANY
  *  - the corresponding function has to be activated in the symbol table and its
  * block stack has to correspond:
@@ -148,7 +148,6 @@ int codeGenBlock(codeGenState *state, astNode *blockRoot);
  *
  * the function works only if these conditions are met:
  *  - the body block of the function has to be generated
- *  - the function symbol has to be in the symbol table
  *
  * the function reads the symbol table but doesn't modify it in any way
  *
@@ -192,13 +191,13 @@ void codeGenDiscard(codeGenState *state);
 codeGenBufNode *codeGenCreateAndInsertBuf(codeGenState *state);
 
 /**
- * @brief destroys a buffer but doesn't remove it from the list
+ * @brief destroys a buffer structure
  */
 void codeGenDestructBuf(codeGenBufNode *buffer);
 
 /**
- * @brief removes the buffer from the list in state but keeps the sections (they
- * must be moved elsewhere before calling this function)
+ * @brief removes and frees the buffer from the list in state witouth touching
+ * the sections (they must be moved elsewhere before calling this function)
  */
 void codeGenRemoveBuf(codeGenState *state, codeGenBufNode *buffer);
 
