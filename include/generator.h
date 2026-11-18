@@ -11,7 +11,7 @@
 
 // #define IFJ_GEN_DEBUG
 
-#define IFJ_GEN_BUF_SIZE 4096 /** the size of a single buffer */
+#define IFJ_GEN_BUF_SIZE 1024 /** the size of a single buffer */
 #define IFJ_GEN_BUF_INSERT_NUM 64
 #define IFJ_GEN_MAX_ID_LEN                                                     \
     1024 /** the maximum size of an identifier (whether in IFJ26 or            \
@@ -19,21 +19,6 @@
 
 #include "ast.h"
 #include <stdbool.h>
-
-/** structure for holding info about where other buffers are to be inserted */
-typedef struct bufInsert {
-    uint16_t textPos;
-    struct codeGenBufNode
-        *childBuff; /** ptr to a buffer holding the generated child block*/
-} bufInsert;
-
-/** node holding references to other buffers */
-typedef struct bufInsertNode {
-    bufInsert data[IFJ_GEN_BUF_INSERT_NUM];
-    uint8_t size; /** how much of data is used */
-
-    struct bufInsertNode *next; /** ptr to the next node */
-} bufInsertNode;
 
 /** node holding one 4kiB sectioin of text for generated code */
 typedef struct bufSection {
@@ -46,9 +31,7 @@ typedef struct bufSection {
 
 /** @brief buffer for keeping the generated code blocks */
 typedef struct codeGenBufNode {
-    bufInsertNode *firstNode;
-    bufInsertNode *lastNode;
-
+    /** linked list of sections */
     bufSection *firstSection;
     bufSection *lastSection;
     int totalSize; /** redundant data. Useful for getting the total size faster
@@ -59,6 +42,7 @@ typedef struct codeGenBufNode {
     const int bufNum; /** number of the buffer */
 
     struct codeGenBufNode *nextBuf;
+    struct codeGenBufNode *prevBuf;
 } codeGenBufNode;
 
 /** @brief an output buffer data structure (one node holds one function)*/
@@ -76,8 +60,6 @@ typedef struct {
     /** a linked list of buffers*/
     codeGenBufNode *firstBuf;
     codeGenBufNode *lastBuf;
-
-    int bufsCreated;
 
     /** a linked list of output buffers for all the functions */
     outBufNode *firstFun;
@@ -193,14 +175,21 @@ void codeGenDiscard(codeGenState *state);
  *
  * @return ptr to the created buffer of NULL on memory allocatino err
  *
- * the buffer will have one bufSectoin and one bufInsertNode allocated
+ * the buffer will have one bufSection allocated and will be inserted at the end
+ * of the list of buffers
  */
-codeGenBufNode *codeGenCreateBuf(codeGenState *state);
+codeGenBufNode *codeGenCreateAndInsertBuf(codeGenState *state);
 
 /**
- * @brief destroys a buffer
+ * @brief destroys a buffer but doesn't remove it from the list
  */
 void codeGenDestructBuf(codeGenBufNode *buffer);
+
+/**
+ * @brief removes the buffer from the list in state but keeps the sections (they
+ * must be moved elsewhere before calling this function)
+ */
+void codeGenRemoveBuf(codeGenState *state, codeGenBufNode *buffer);
 
 /**
  * @brief inserts the text into the buffer
@@ -214,28 +203,24 @@ void codeGenDestructBuf(codeGenBufNode *buffer);
 int codeGenInsertTxt(const char *txt, codeGenBufNode *buffer);
 
 /**
- * @brief returns the lenght of the buffer (both the total lenght and the lenght
- * of inserted buffers)
- */
-int codeGenBufLenght(codeGenBufNode *buffer);
-
-/**
  * @brief inserts a reference to insertedBuf at the current position in destBuf
  *
  * @param destBuf a non NULL ptr to the buffer with at least one bufSection and
  * one bufInsertNode, where the reference is to be inserted
  * @param insertedBuf a non NULL ptr to the buffer, that is to be inserted
+ * @param insertedNode a non NULL ptr to node in ast symbolizing the inserted
+ * block (its ptr to the buffer will be changed to NULL)
  *
  * @return 0 on success, -1 on memeory allocation err
  *
  * the reference will represent, that at this positon in the text, the whole
  * text of insertedBuf is supposed to be inserted
  */
-int codeGenInsertBufToTxt(codeGenBufNode *destBuf, codeGenBufNode *insertedBuf);
+int codeGenInsertBufToTxt(codeGenState *state, codeGenBufNode *destBuf,
+                          codeGenBufNode *insertedBuf, astNode *insertedNode);
 
 /**
- * @brief outputs the contents of the buffer (including buffers inserted in its
- * middle)
+ * @brief outputs the contents of the buffer
  *
  * @param outBuf output string, where the data is to be saved
  * @param buffer the buffer, that should be outputted in a plain string
@@ -253,7 +238,8 @@ int codeGenOutputBuf(char *outBuf, codeGenBufNode *buffer);
  *
  * @return 0 on success, -1 on failure (memory allocation err if not debugging)
  */
-int codeGenStatementArr(astNode **nodes, size_t count, codeGenBufNode *buffer);
+int codeGenStatementArr(astNode **nodes, size_t count, codeGenBufNode *buffer,
+                        codeGenState *state);
 
 /**
  * @brief generates one node of the ast to buffer
@@ -265,7 +251,8 @@ int codeGenStatementArr(astNode **nodes, size_t count, codeGenBufNode *buffer);
  *
  * @return 0 on success, -1 on failure (memory allocation err if not debugging)
  */
-int codeGenStatement(astNode *node, codeGenBufNode *buffer, bool leaveVal);
+int codeGenStatement(astNode *node, codeGenBufNode *buffer, bool leaveVal,
+                     codeGenState *state);
 
 /**
  * @brief generates a variable definition to buffer
@@ -275,7 +262,8 @@ int codeGenStatement(astNode *node, codeGenBufNode *buffer, bool leaveVal);
  *
  * @return 0 on success, -1 on failure (memory allocation err if not debugging)
  */
-int codeGenStmtVarDef(astNode *varDef, codeGenBufNode *buffer);
+int codeGenStmtVarDef(astNode *varDef, codeGenBufNode *buffer,
+                      codeGenState *state);
 
 /**
  * @brief generates a assignment to buffer
@@ -285,7 +273,8 @@ int codeGenStmtVarDef(astNode *varDef, codeGenBufNode *buffer);
  *
  * @return 0 on success, -1 on failure (memory allocation err if not debugging)
  */
-int codeGenStmtAssign(astNode *assign, codeGenBufNode *buffer);
+int codeGenStmtAssign(astNode *assign, codeGenBufNode *buffer,
+                      codeGenState *state);
 
 /**
  * @brief generates an if statement to buffer
@@ -295,7 +284,7 @@ int codeGenStmtAssign(astNode *assign, codeGenBufNode *buffer);
  *
  * @return 0 on success, -1 on failure (memory allocation err if not debugging)
  */
-int codeGenStmtIf(astNode *ifStmt, codeGenBufNode *buffer);
+int codeGenStmtIf(astNode *ifStmt, codeGenBufNode *buffer, codeGenState *state);
 
 /**
  * @brief generates a while loop to buffer
@@ -305,7 +294,8 @@ int codeGenStmtIf(astNode *ifStmt, codeGenBufNode *buffer);
  *
  * @return 0 on success, -1 on failure (memory allocation err if not debugging)
  */
-int codeGenStmtWhile(astNode *whileLoop, codeGenBufNode *buffer);
+int codeGenStmtWhile(astNode *whileLoop, codeGenBufNode *buffer,
+                     codeGenState *state);
 
 /**
  * @brief generates a for loop to buffer
@@ -315,7 +305,8 @@ int codeGenStmtWhile(astNode *whileLoop, codeGenBufNode *buffer);
  *
  * @return 0 on success, -1 on failure (memory allocation err if not debugging)
  */
-int codeGenStmtFor(astNode *forLoop, codeGenBufNode *buffer);
+int codeGenStmtFor(astNode *forLoop, codeGenBufNode *buffer,
+                   codeGenState *state);
 
 /**
  * @brief generates a function call to buffer
@@ -328,7 +319,7 @@ int codeGenStmtFor(astNode *forLoop, codeGenBufNode *buffer);
  * @return 0 on success, -1 on failure (memory allocation err if not debugging)
  */
 int codeGenStmtFuncCall(astNode *funcCall, codeGenBufNode *buffer,
-                        bool leaveVal);
+                        bool leaveVal, codeGenState *state);
 
 /**
  * @brief generates a return statement to buffer (if retval is not Unit, leaves
@@ -339,7 +330,8 @@ int codeGenStmtFuncCall(astNode *funcCall, codeGenBufNode *buffer,
  *
  * @return 0 on success, -1 on failure (memory allocation err if not debugging)
  */
-int codeGenStmtReturn(astNode *ret, codeGenBufNode *buffer);
+int codeGenStmtReturn(astNode *ret, codeGenBufNode *buffer,
+                      codeGenState *state);
 
 /**
  * @brief generates a binary operation to buffer (leaves the result on stack)
@@ -349,7 +341,8 @@ int codeGenStmtReturn(astNode *ret, codeGenBufNode *buffer);
  *
  * @return 0 on success, -1 on failure (memory allocation err if not debugging)
  */
-int codeGenStmtBinOp(astNode *binOp, codeGenBufNode *buffer);
+int codeGenStmtBinOp(astNode *binOp, codeGenBufNode *buffer,
+                     codeGenState *state);
 
 /**
  * @brief generates a unary operation to buffer (leaves the result on stack)
@@ -359,7 +352,7 @@ int codeGenStmtBinOp(astNode *binOp, codeGenBufNode *buffer);
  *
  * @return 0 on success, -1 on failure (memory allocation err if not debugging)
  */
-int codeGenStmtUnOp(astNode *unOp, codeGenBufNode *buffer);
+int codeGenStmtUnOp(astNode *unOp, codeGenBufNode *buffer, codeGenState *state);
 
 /**
  * @brief generates a literal to buffer (leaves the value on stack)
@@ -404,7 +397,8 @@ int codeGenStmtIdentif(astNode *identif, codeGenBufNode *buffer);
  *
  * @return 0 on success, -1 on failure (memory allocation err if not debugging)
  */
-int codeGenStmtBlock(astNode *block, codeGenBufNode *buffer);
+int codeGenStmtBlock(astNode *block, codeGenBufNode *buffer,
+                     codeGenState *state);
 
 /**
  * @brief checks if the function called is a builtin function and genereates its

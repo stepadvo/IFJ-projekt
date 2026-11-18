@@ -165,7 +165,6 @@ codeGenState *codeGenInit() {
 
     static codeGenState state = {.firstBuf = NULL,
                                  .lastBuf = NULL,
-                                 .bufsCreated = 0,
                                  .firstFun = NULL,
                                  .lastFun = NULL,
                                  .mainFunName = "",
@@ -192,14 +191,14 @@ int codeGenBlock(codeGenState *state, astNode *blockRoot) {
                     "The node must be a block. Type is %i", blockRoot->type);
 
     // create a new buffer for generating
-    codeGenBufNode *buffer = codeGenCreateBuf(state);
+    codeGenBufNode *buffer = codeGenCreateAndInsertBuf(state);
     if (!buffer) {
         return -1;
     }
 
     // generate all the statements in the block into the created buffer
     IFJ_GEN_TRY(codeGenStatementArr(blockRoot->data.block.statements,
-                                    blockRoot->data.block.count, buffer),
+                                    blockRoot->data.block.count, buffer, state),
                 -1);
 
     // set the ptr to the created generated buffer in ast
@@ -239,7 +238,7 @@ int codeGenFunction(codeGenState *state, astNode *funRoot) {
                     strlen(funRoot->data.funcDef.params[i].name);
     }
     // get the size of the body
-    totalLen += codeGenBufLenght(bodyBuffer);
+    totalLen += bodyBuffer->totalSize;
 
     // allocate a chunk of memory for the whole function and its output buffer
     outBufNode *outBuf = malloc(sizeof(outBufNode));
@@ -269,7 +268,7 @@ int codeGenFunction(codeGenState *state, astNode *funRoot) {
         pos += sprintf(&outBufData[pos], singleParam, paramName, paramName);
     }
 
-    // insert the body
+    // insert the body and remove the used buffer
     pos += codeGenOutputBuf(&outBufData[pos], bodyBuffer);
 
     // generate the footer
@@ -333,53 +332,43 @@ void codeGenDiscard(codeGenState *state) {
  * --------------------
  */
 
-codeGenBufNode *codeGenCreateBuf(codeGenState *state) {
+codeGenBufNode *codeGenCreateAndInsertBuf(codeGenState *state) {
     codeGenBufNode *tempBufP = malloc(sizeof(codeGenBufNode));
     if (!tempBufP) {
         setErrCode(99);
         return NULL;
     }
-    bufInsertNode *tempNodeP = malloc(sizeof(bufInsertNode));
-    if (!tempNodeP) {
-        goto err_node;
-    }
 
     bufSection *tempSectionP = malloc(sizeof(bufSection));
     if (!tempSectionP) {
-        goto err_area;
+        free(tempBufP);
+        setErrCode(99);
+        return NULL;
     }
 
     // initialize the buffer
-    codeGenBufNode buf = {.firstNode = tempNodeP,
-                          .lastNode = tempNodeP,
-                          .firstSection = tempSectionP,
+    codeGenBufNode buf = {.firstSection = tempSectionP,
                           .lastSection = tempSectionP,
                           .totalSize = 0,
                           .labelNum = 0,
                           .nextBuf = NULL,
-                          .bufNum = state->bufsCreated++};
+                          .prevBuf = state->lastBuf};
     memcpy(tempBufP, &buf, sizeof(codeGenBufNode));
 
-    return tempBufP;
+    // insert the buffer at the end
+    if (state->lastBuf) {
+        state->lastBuf->nextBuf = tempBufP;
+    } else {
+        state->firstBuf = tempBufP;
+    }
+    state->lastBuf = tempBufP;
 
-err_area:
-    free(tempNodeP);
-err_node:
-    free(tempBufP);
-    setErrCode(99);
-    return NULL;
+    return tempBufP;
 }
 
 void codeGenDestructBuf(codeGenBufNode *buffer) {
     if (!buffer) {
         return;
-    }
-    // free all the metadata
-    bufInsertNode *nextNode;
-    for (bufInsertNode *curr = buffer->firstNode; curr != NULL;
-         curr = nextNode) {
-        nextNode = curr->next;
-        free(curr);
     }
 
     // free all the text areas
@@ -393,20 +382,20 @@ void codeGenDestructBuf(codeGenBufNode *buffer) {
     free(buffer);
 }
 
-int codeGenBufLenght(codeGenBufNode *buffer) {
-    // add the size of the text in this buffer
-    int len = buffer->totalSize;
-
-    // add lenghts of all the inserted buffers
-    bufInsertNode *node = buffer->firstNode;
-    while (node) {
-        for (int i = 0; i < node->size; i++) {
-            len += codeGenBufLenght(node->data[i].childBuff);
-        }
-        node = node->next;
+void codeGenRemoveBuf(codeGenState *state, codeGenBufNode *buffer) {
+    // remove the buffer from the list
+    if (buffer->nextBuf) {
+        buffer->nextBuf->prevBuf = buffer->prevBuf;
+    } else {
+        state->lastBuf = buffer->prevBuf;
+    }
+    if (buffer->prevBuf) {
+        buffer->prevBuf->nextBuf = buffer->nextBuf;
+    } else {
+        state->firstBuf = buffer->nextBuf;
     }
 
-    return len;
+    free(buffer);
 }
 
 int codeGenInsertTxt(const char *txt, codeGenBufNode *buffer) {
@@ -441,30 +430,17 @@ int codeGenInsertTxt(const char *txt, codeGenBufNode *buffer) {
     return 0;
 }
 
-int codeGenInsertBufToTxt(codeGenBufNode *destBuf,
-                          codeGenBufNode *insertedBuf) {
-    bufInsertNode *potentialDest = destBuf->lastNode;
-    if (potentialDest->size >= IFJ_GEN_BUF_INSERT_NUM) {
-        // the last node's capacity is full - we need to create a new one
-        potentialDest = malloc(sizeof(bufInsertNode));
-        if (!potentialDest) {
-            setErrCode(99);
-            return -1;
-        }
+int codeGenInsertBufToTxt(codeGenState *state, codeGenBufNode *destBuf,
+                          codeGenBufNode *insertedBuf, astNode *insertedNode) {
+    // append the sections of the inserted buffer to the dest buffer
+    bufSection *lastBeforeInsert = destBuf->lastSection;
+    lastBeforeInsert->next = insertedBuf->firstSection;
+    destBuf->lastSection = insertedBuf->lastSection;
+    destBuf->totalSize += insertedBuf->totalSize;
 
-        potentialDest->next = NULL;
-        potentialDest->size = 0;
-
-        // we append the new node
-        destBuf->lastNode->next = potentialDest;
-        destBuf->lastNode = potentialDest;
-    }
-    // else potentialDest can stay as the last node in the list
-
-    // insert the new reference to the first viable position
-    potentialDest->data[potentialDest->size++] =
-        (bufInsert){.childBuff = insertedBuf, .textPos = destBuf->totalSize};
-    // update the buffer size
+    // remove the buffer from list but keep the sections inserted into destBuf
+    codeGenRemoveBuf(state, insertedBuf);
+    insertedNode->data.block.bufferPtr = NULL;
 
     return 0;
 }
@@ -473,53 +449,13 @@ int codeGenOutputBuf(char *outBuf, codeGenBufNode *buffer) {
     int len = 0;
 
     // add lenghts of all the inserted buffers
-    bufInsertNode *node = buffer->firstNode;
     bufSection *section = buffer->firstSection;
-    int posInSection = 0;
 
-    while (node) {
-        for (int i = 0; i < node->size; i++) {
-            bufInsert nextInsert = node->data[i];
-            // the nextInsert.textPos will be acting a the number of characters,
-            // that are left to be copied from now on
-
-            // copy the text preceeding each inserted buffer
-            // copy the first section if it can be all copied before the next
-            // insert
-            if (section->size - posInSection < nextInsert.textPos) {
-                memcpy(&outBuf[len], &section->data[posInSection],
-                       section->size - posInSection);
-                len += section->size - posInSection;
-                nextInsert.textPos -= (section->size - posInSection);
-
-                section = section->next;
-            }
-            // copy all the sections, that can be copied whole
-            while (section->size < nextInsert.textPos) {
-                memcpy(&outBuf[len], section->data, section->size);
-                len += section->size;
-                nextInsert.textPos -= section->size;
-
-                section = section->next;
-            }
-            // copy the rest from the section bigger, than what is left to be
-            // copied
-            memcpy(&outBuf[len], &section->data[posInSection],
-                   nextInsert.textPos);
-            len += nextInsert.textPos;
-            posInSection = posInSection + nextInsert.textPos;
-
-            // copy the inserted buffer
-            len += codeGenOutputBuf(&outBuf[len], buffer);
-        }
-        node = node->next;
-    }
-
-    // copy what is left after the last inserted buffer
+    // copy the buffer sections
     while (section) {
         memcpy(&outBuf[len], section->data, section->size);
-        len += section->size;
         section = section->next;
+        len += section->size;
     }
 
     // make sure the string ends in \0 but don't include it in the lenght
@@ -528,58 +464,60 @@ int codeGenOutputBuf(char *outBuf, codeGenBufNode *buffer) {
     return len;
 }
 
-int codeGenStatementArr(astNode **nodes, size_t count, codeGenBufNode *buffer) {
+int codeGenStatementArr(astNode **nodes, size_t count, codeGenBufNode *buffer,
+                        codeGenState *state) {
     for (size_t i = 0; i < count; i++) {
         // generate all statements. By default don't leave value on stack
         // (return value should be under AST_RETURN)
-        IFJ_GEN_TRY(codeGenStatement(nodes[i], buffer, false), -1);
+        IFJ_GEN_TRY(codeGenStatement(nodes[i], buffer, false, state), -1);
     }
     return 0;
 }
 
-int codeGenStatement(astNode *node, codeGenBufNode *buffer, bool leaveVal) {
+int codeGenStatement(astNode *node, codeGenBufNode *buffer, bool leaveVal,
+                     codeGenState *state) {
     // determine the type of node and call appropriate function
     // ignore a function only returning a value on stack if leaveVal is false
     switch (node->type) {
     case AST_VAR_DEF:
-        IFJ_GEN_TRY(codeGenStmtVarDef(node, buffer), -1);
+        IFJ_GEN_TRY(codeGenStmtVarDef(node, buffer, state), -1);
         break;
 
     case AST_ASSIGN:
-        IFJ_GEN_TRY(codeGenStmtAssign(node, buffer), -1);
+        IFJ_GEN_TRY(codeGenStmtAssign(node, buffer, state), -1);
         break;
 
     case AST_IF:
-        IFJ_GEN_TRY(codeGenStmtIf(node, buffer), -1);
+        IFJ_GEN_TRY(codeGenStmtIf(node, buffer, state), -1);
         break;
 
     case AST_WHILE:
-        IFJ_GEN_TRY(codeGenStmtWhile(node, buffer), -1);
+        IFJ_GEN_TRY(codeGenStmtWhile(node, buffer, state), -1);
         break;
 
     case AST_FOR:
-        IFJ_GEN_TRY(codeGenStmtFor(node, buffer), -1);
+        IFJ_GEN_TRY(codeGenStmtFor(node, buffer, state), -1);
         break;
 
     case AST_FUNC_CALL:
         if (leaveVal) {
-            IFJ_GEN_TRY(codeGenStmtFuncCall(node, buffer, leaveVal), -1);
+            IFJ_GEN_TRY(codeGenStmtFuncCall(node, buffer, leaveVal, state), -1);
         }
         break;
 
     case AST_RETURN:
-        IFJ_GEN_TRY(codeGenStmtReturn(node, buffer), -1);
+        IFJ_GEN_TRY(codeGenStmtReturn(node, buffer, state), -1);
         break;
 
     case AST_BINOP:
         if (leaveVal) {
-            IFJ_GEN_TRY(codeGenStmtBinOp(node, buffer), -1);
+            IFJ_GEN_TRY(codeGenStmtBinOp(node, buffer, state), -1);
         }
         break;
 
     case AST_UNOP:
         if (leaveVal) {
-            IFJ_GEN_TRY(codeGenStmtUnOp(node, buffer), -1);
+            IFJ_GEN_TRY(codeGenStmtUnOp(node, buffer, state), -1);
         }
         break;
 
@@ -596,7 +534,7 @@ int codeGenStatement(astNode *node, codeGenBufNode *buffer, bool leaveVal) {
         break;
 
     case AST_BLOCK:
-        IFJ_GEN_TRY(codeGenStmtBlock(node, buffer), -1);
+        IFJ_GEN_TRY(codeGenStmtBlock(node, buffer, state), -1);
         break;
 
     default:
@@ -607,7 +545,8 @@ int codeGenStatement(astNode *node, codeGenBufNode *buffer, bool leaveVal) {
     return 0;
 }
 
-int codeGenStmtVarDef(astNode *varDef, codeGenBufNode *buffer) {
+int codeGenStmtVarDef(astNode *varDef, codeGenBufNode *buffer,
+                      codeGenState *state) {
     // get the name in IFJcode26
     const char *name = codeGenGetVarName(varDef->data.varDef.name);
     GEN_CHECK(name != NULL, -1);
@@ -623,13 +562,15 @@ int codeGenStmtVarDef(astNode *varDef, codeGenBufNode *buffer) {
     // should be left on stack)
 
     // generate the assigned value and expect result on stack
-    IFJ_GEN_TRY(codeGenStatement(varDef->data.varDef.initializer, buffer, true),
-                -1);
+    IFJ_GEN_TRY(
+        codeGenStatement(varDef->data.varDef.initializer, buffer, true, state),
+        -1);
     IFJ_GEN_TRY(codeGenInsertTxt(buf, buffer), -1);
     return 0;
 }
 
-int codeGenStmtAssign(astNode *assign, codeGenBufNode *buffer) {
+int codeGenStmtAssign(astNode *assign, codeGenBufNode *buffer,
+                      codeGenState *state) {
     // get the name in IFJcode26
     const char *name = codeGenGetVarName(assign->data.assign.name);
     GEN_CHECK(name != NULL, -1);
@@ -644,12 +585,14 @@ int codeGenStmtAssign(astNode *assign, codeGenBufNode *buffer) {
     // should be left on stack)
 
     // generate the assigned value and expect result on stack
-    IFJ_GEN_TRY(codeGenStatement(assign->data.assign.value, buffer, true), -1);
+    IFJ_GEN_TRY(
+        codeGenStatement(assign->data.assign.value, buffer, true, state), -1);
     IFJ_GEN_TRY(codeGenInsertTxt(buf, buffer), -1);
     return 0;
 }
 
-int codeGenStmtIf(astNode *ifStmt, codeGenBufNode *buffer) {
+int codeGenStmtIf(astNode *ifStmt, codeGenBufNode *buffer,
+                  codeGenState *state) {
     // get a unique label id
     const char *labelId = codeGenGetLabelId(buffer);
     GEN_CHECK(labelId != NULL, -1);
@@ -677,24 +620,28 @@ int codeGenStmtIf(astNode *ifStmt, codeGenBufNode *buffer) {
     // now can release the hold of labelId and generate the subblocks
 
     // the condition leaves result on stack
-    IFJ_GEN_TRY(codeGenStatement(ifStmt->data.ifStmt.condition, buffer, true),
-                -1);
+    IFJ_GEN_TRY(
+        codeGenStatement(ifStmt->data.ifStmt.condition, buffer, true, state),
+        -1);
     IFJ_GEN_TRY(codeGenInsertTxt(headerBuf, buffer), -1);
 
     // then block
-    IFJ_GEN_TRY(codeGenStatement(ifStmt->data.ifStmt.thenBlock, buffer, false),
-                -1);
+    IFJ_GEN_TRY(
+        codeGenStatement(ifStmt->data.ifStmt.thenBlock, buffer, false, state),
+        -1);
     IFJ_GEN_TRY(codeGenInsertTxt(middleBuf, buffer), -1);
 
     // else block
-    IFJ_GEN_TRY(codeGenStatement(ifStmt->data.ifStmt.elseBlock, buffer, false),
-                -1);
+    IFJ_GEN_TRY(
+        codeGenStatement(ifStmt->data.ifStmt.elseBlock, buffer, false, state),
+        -1);
     IFJ_GEN_TRY(codeGenInsertTxt(footerBuf, buffer), -1);
 
     return 0;
 }
 
-int codeGenStmtWhile(astNode *whileLoop, codeGenBufNode *buffer) {
+int codeGenStmtWhile(astNode *whileLoop, codeGenBufNode *buffer,
+                     codeGenState *state) {
     // get a unique label id
     const char *labelId = codeGenGetLabelId(buffer);
     GEN_CHECK(labelId != NULL, -1);
@@ -724,21 +671,22 @@ int codeGenStmtWhile(astNode *whileLoop, codeGenBufNode *buffer) {
     IFJ_GEN_TRY(codeGenInsertTxt(headerBuf, buffer), -1);
 
     // the condition leaves result on stack
-    IFJ_GEN_TRY(
-        codeGenStatement(whileLoop->data.whileStmt.condition, buffer, true),
-        -1);
+    IFJ_GEN_TRY(codeGenStatement(whileLoop->data.whileStmt.condition, buffer,
+                                 true, state),
+                -1);
     IFJ_GEN_TRY(codeGenInsertTxt(condCheckBuf, buffer), -1);
 
     // body of the loop
-    IFJ_GEN_TRY(
-        codeGenStatement(whileLoop->data.whileStmt.bodyBlock, buffer, false),
-        -1);
+    IFJ_GEN_TRY(codeGenStatement(whileLoop->data.whileStmt.bodyBlock, buffer,
+                                 false, state),
+                -1);
     IFJ_GEN_TRY(codeGenInsertTxt(footerBuf, buffer), -1);
 
     return 0;
 }
 
-int codeGenStmtFor(astNode *forLoop, codeGenBufNode *buffer) {
+int codeGenStmtFor(astNode *forLoop, codeGenBufNode *buffer,
+                   codeGenState *state) {
     // get an unique label id (for labels and internal variables)
     const char *uqId = codeGenGetLabelId(buffer);
     size_t uqIdLen = strlen(uqId);
@@ -815,10 +763,12 @@ int codeGenStmtFor(astNode *forLoop, codeGenBufNode *buffer) {
     // now we can release hold of the uqId
 
     // evaluate the start, end and step values and push them to stack
-    IFJ_GEN_TRY(codeGenStatement(forLoop->data.forStmt.start, buffer, true),
-                -1);
-    IFJ_GEN_TRY(codeGenStatement(forLoop->data.forStmt.end, buffer, true), -1);
-    IFJ_GEN_TRY(codeGenStatement(forLoop->data.forStmt.step, buffer, true), -1);
+    IFJ_GEN_TRY(
+        codeGenStatement(forLoop->data.forStmt.start, buffer, true, state), -1);
+    IFJ_GEN_TRY(
+        codeGenStatement(forLoop->data.forStmt.end, buffer, true, state), -1);
+    IFJ_GEN_TRY(
+        codeGenStatement(forLoop->data.forStmt.step, buffer, true, state), -1);
 
     // insert the header
     IFJ_GEN_TRY(codeGenInsertTxt(headerBuf, buffer), -1);
@@ -826,15 +776,15 @@ int codeGenStmtFor(astNode *forLoop, codeGenBufNode *buffer) {
     // insert all the guards
     for (size_t i = 0; i < forLoop->data.forStmt.guardCount; i++) {
         // leave the evaluation of the boolean value on stack
-        IFJ_GEN_TRY(
-            codeGenStatement(forLoop->data.forStmt.guards[i], buffer, true),
-            -1);
+        IFJ_GEN_TRY(codeGenStatement(forLoop->data.forStmt.guards[i], buffer,
+                                     true, state),
+                    -1);
         IFJ_GEN_TRY(codeGenInsertTxt(guardCheckBuf, buffer), -1);
     }
 
     // generate the body of the for loop
-    IFJ_GEN_TRY(codeGenStatement(forLoop->data.forStmt.body, buffer, false),
-                -1);
+    IFJ_GEN_TRY(
+        codeGenStatement(forLoop->data.forStmt.body, buffer, false, state), -1);
 
     // insert the footer
     IFJ_GEN_TRY(codeGenInsertTxt(footerBuf, buffer), -1);
@@ -843,12 +793,12 @@ int codeGenStmtFor(astNode *forLoop, codeGenBufNode *buffer) {
 }
 
 int codeGenStmtFuncCall(astNode *funcCall, codeGenBufNode *buffer,
-                        bool leaveVal) {
+                        bool leaveVal, codeGenState *state) {
     // generate the statements from last to first (they leave their value on the
     // stack)
     for (size_t i = funcCall->data.funcCall.argCount; i != 0; i--) {
         IFJ_GEN_TRY(codeGenStatement(funcCall->data.funcCall.arguments[i - 1],
-                                     buffer, true),
+                                     buffer, true, state),
                     -1);
     }
 
@@ -879,11 +829,12 @@ int codeGenStmtFuncCall(astNode *funcCall, codeGenBufNode *buffer,
     return 0;
 }
 
-int codeGenStmtReturn(astNode *ret, codeGenBufNode *buffer) {
+int codeGenStmtReturn(astNode *ret, codeGenBufNode *buffer,
+                      codeGenState *state) {
     // generate the RHS if the ptr to it isn't NULL, it will leave its result on
     // the stack
     if (ret->data.returnStmt.value) {
-        codeGenStatement(ret->data.returnStmt.value, buffer, true);
+        codeGenStatement(ret->data.returnStmt.value, buffer, true, state);
     }
 
     // jump to the end of the function for return
@@ -897,10 +848,13 @@ int codeGenStmtReturn(astNode *ret, codeGenBufNode *buffer) {
     return 0;
 }
 
-int codeGenStmtBinOp(astNode *binOp, codeGenBufNode *buffer) {
+int codeGenStmtBinOp(astNode *binOp, codeGenBufNode *buffer,
+                     codeGenState *state) {
     // generate the 2 parameters and leave their values on stack
-    IFJ_GEN_TRY(codeGenStatement(binOp->data.binop.left, buffer, true), -1);
-    IFJ_GEN_TRY(codeGenStatement(binOp->data.binop.right, buffer, true), -1);
+    IFJ_GEN_TRY(codeGenStatement(binOp->data.binop.left, buffer, true, state),
+                -1);
+    IFJ_GEN_TRY(codeGenStatement(binOp->data.binop.right, buffer, true, state),
+                -1);
 
     // generate the operation
     switch (binOp->data.binop.op) {
@@ -964,14 +918,16 @@ int codeGenStmtBinOp(astNode *binOp, codeGenBufNode *buffer) {
     return 0;
 }
 
-int codeGenStmtUnOp(astNode *unOp, codeGenBufNode *buffer) {
+int codeGenStmtUnOp(astNode *unOp, codeGenBufNode *buffer,
+                    codeGenState *state) {
     // if the operator is unary - then we also need a prefix
     if (unOp->data.unop.op == UNARY_MINUS) {
         IFJ_GEN_TRY(codeGenInsertTxt("PUSHS int@0\n", buffer), -1);
     }
 
     // generate the operand and leave its value on stack
-    IFJ_GEN_TRY(codeGenStatement(unOp->data.unop.operand, buffer, true), -1);
+    IFJ_GEN_TRY(codeGenStatement(unOp->data.unop.operand, buffer, true, state),
+                -1);
 
     // generate the operator suffix
     switch (unOp->data.unop.op) {
@@ -1079,13 +1035,16 @@ int codeGenStmtIdentif(astNode *identif, codeGenBufNode *buffer) {
     return 0;
 }
 
-int codeGenStmtBlock(astNode *block, codeGenBufNode *buffer) {
+int codeGenStmtBlock(astNode *block, codeGenBufNode *buffer,
+                     codeGenState *state) {
     // check if the child block has been generated
     GEN_CHECK_PRINT(block->data.block.bufferPtr != NULL, -1,
                     "A child block at %p wasn't generated yet", block);
 
     // insert a reference to the child block
-    IFJ_GEN_TRY(codeGenInsertBufToTxt(buffer, block->data.block.bufferPtr), -1);
+    IFJ_GEN_TRY(codeGenInsertBufToTxt(state, buffer,
+                                      block->data.block.bufferPtr, block),
+                -1);
     return 0;
 }
 
