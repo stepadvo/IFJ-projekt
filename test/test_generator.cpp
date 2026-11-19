@@ -129,9 +129,10 @@ TEST_F(CodeGeneratorTest, ErrorHandlingNulls) {
     ASSERT_NE(state, nullptr);
 
     // According to docs: codeGenBlock returns 1 if state or blockRoot are NULL
-    EXPECT_EQ(codeGenBlock(nullptr, nullptr), 1);
-    EXPECT_EQ(codeGenBlock(state, nullptr), 1);
-    EXPECT_EQ(codeGenBlock(nullptr, reinterpret_cast<astNode *>(0x1)), 1);
+    EXPECT_EQ(codeGenBlock(nullptr, nullptr, false), 1);
+    EXPECT_EQ(codeGenBlock(state, nullptr, false), 1);
+    EXPECT_EQ(codeGenBlock(nullptr, reinterpret_cast<astNode *>(0x1), false),
+              1);
 
     // According to docs: codeGenFunction returns 1 if state or funRoot are NULL
     EXPECT_EQ(codeGenFunction(nullptr, nullptr), 1);
@@ -146,6 +147,13 @@ TEST_F(CodeGeneratorTest, ErrorHandlingNulls) {
  */
 TEST_F(CodeGeneratorTest, UtilityFunctions) {
     // Test variable name assembly
+    if (symTableInit() == -1) {
+        return;
+    }
+    symTableInsertFun("hello", UNIT, 0, nullptr);
+    symTableActivateFun("hello");
+    beginBlock();
+    symTableInsertVar("counter", INT, false);
     const char *varName = codeGenGetVarName("counter");
     ASSERT_NE(varName, nullptr);
     EXPECT_EQ(strncmp(varName, "LF@counter", 10), 0);

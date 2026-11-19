@@ -49,6 +49,8 @@ typedef struct codeGenBufNode {
                       label names are identical (works if one buffer is analogous
                       to one source code block) */
 
+    bool leftVal; /** set to true if the block left value on stack */
+
     struct codeGenBufNode *nextBuf;
     struct codeGenBufNode *prevBuf;
 } codeGenBufNode;
@@ -106,6 +108,8 @@ void codeGenDestruct(codeGenState *state);
  * @brief a function for generating a code block
  *
  * @param blockRoot ptr to the node with .type=AST_BLOCK, that roots the block
+ * @param leaveVal if true the block will leave its value on the stack (for eg.
+ * then and else block of if statement as expression)
  *
  * @return 0 on success, 1 if state or blockRoot are NULL, -1 on memory
  * allocation err
@@ -132,7 +136,7 @@ void codeGenDestruct(codeGenState *state);
  * if IJF_GEN_DEBUG is not defined and the conditions aren't met, it will
  * result in undefined behaviour
  */
-int codeGenBlock(codeGenState *state, astNode *blockRoot);
+int codeGenBlock(codeGenState *state, astNode *blockRoot, bool leaveVal);
 
 /**
  * @brief a function for generating a function
@@ -249,7 +253,7 @@ int codeGenOutputBuf(char *outBuf, codeGenBufNode *buffer);
  * @return 0 on success, -1 on failure (memory allocation err if not debugging)
  */
 int codeGenStatementArr(astNode **nodes, size_t count, codeGenBufNode *buffer,
-                        codeGenState *state);
+                        codeGenState *state, bool leaveVal);
 
 /**
  * @brief generates one node of the ast to buffer
@@ -294,7 +298,8 @@ int codeGenStmtAssign(astNode *assign, codeGenBufNode *buffer,
  *
  * @return 0 on success, -1 on failure (memory allocation err if not debugging)
  */
-int codeGenStmtIf(astNode *ifStmt, codeGenBufNode *buffer, codeGenState *state);
+int codeGenStmtIf(astNode *ifStmt, codeGenBufNode *buffer, codeGenState *state,
+                  bool leaveVal);
 
 /**
  * @brief generates a while loop to buffer
@@ -408,7 +413,7 @@ int codeGenStmtIdentif(astNode *identif, codeGenBufNode *buffer);
  * @return 0 on success, -1 on failure (memory allocation err if not debugging)
  */
 int codeGenStmtBlock(astNode *block, codeGenBufNode *buffer,
-                     codeGenState *state);
+                     codeGenState *state, bool expectVal);
 
 /**
  * @brief generates a convertion from int to double
@@ -418,7 +423,8 @@ int codeGenStmtBlock(astNode *block, codeGenBufNode *buffer,
  *
  * @return 0 on success, -1 on failure (memory allocation err if not debugging)
  */
-int codeGenStmtInt2Double(astNode *conv, codeGenBufNode *buffer, codeGenState *state);
+int codeGenStmtInt2Double(astNode *conv, codeGenBufNode *buffer,
+                          codeGenState *state);
 
 /**
  * @brief checks if the function called is a builtin function and genereates its

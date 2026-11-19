@@ -194,7 +194,7 @@ void codeGenDestruct(codeGenState *state) {
     codeGenDiscard(state);
 }
 
-int codeGenBlock(codeGenState *state, astNode *blockRoot) {
+int codeGenBlock(codeGenState *state, astNode *blockRoot, bool leaveVal) {
     if (!state || !blockRoot) {
         return 1;
     }
@@ -206,11 +206,33 @@ int codeGenBlock(codeGenState *state, astNode *blockRoot) {
     if (!buffer) {
         return -1;
     }
+    buffer->leftVal = leaveVal;
 
     // generate all the statements in the block into the created buffer
     IFJ_GEN_TRY(codeGenStatementArr(blockRoot->data.block.statements,
-                                    blockRoot->data.block.count, buffer, state),
+                                    blockRoot->data.block.count, buffer, state,
+                                    leaveVal),
                 -1);
+
+#ifdef IFJ_GEN_DEBUG
+    // if we expect value, check that the last statement generated it
+    if (leaveVal) {
+        const char *buf = buffer->lastSection->data;
+        int i = buffer->lastSection->size -
+                2; // set to last index before last newline
+        while (buf[i] != '\n') {
+            i--;
+        }
+        // check that the last instruction left value on stack
+        /*
+        GEN_CHECK_PRINT(
+            buf[i + 1] == 'P' && buf[i + 2] == 'U' && buf[i + 3] == 'S' &&
+                buf[i + 4] == 'H' && buf[i + 5] == 'S',
+            -1,
+            "block expected to leave value but its last statement left none\n");
+        */
+    }
+#endif
 
     // set the ptr to the created generated buffer in ast
     blockRoot->data.block.bufferPtr = (void *)buffer;
@@ -495,12 +517,20 @@ int codeGenOutputBuf(char *outBuf, codeGenBufNode *buffer) {
 }
 
 int codeGenStatementArr(astNode **nodes, size_t count, codeGenBufNode *buffer,
-                        codeGenState *state) {
+                        codeGenState *state, bool leaveVal) {
 
+    // initialize as false (we don't want value from statements, that aren't
+    // last)
+    bool getVal = false;
     for (size_t i = 0; i < count; i++) {
+        // if this is the last statement and we expect value to be left, leave
+        // the value
+        if (i == count - 1) {
+            getVal = leaveVal;
+        }
         // generate all statements. By default don't leave value on stack
         // (return value should be under AST_RETURN)
-        IFJ_GEN_TRY(codeGenStatement(nodes[i], buffer, false, state), -1);
+        IFJ_GEN_TRY(codeGenStatement(nodes[i], buffer, getVal, state), -1);
     }
     return 0;
 }
@@ -519,7 +549,7 @@ int codeGenStatement(astNode *node, codeGenBufNode *buffer, bool leaveVal,
         break;
 
     case AST_IF:
-        IFJ_GEN_TRY(codeGenStmtIf(node, buffer, state), -1);
+        IFJ_GEN_TRY(codeGenStmtIf(node, buffer, state, leaveVal), -1);
         break;
 
     case AST_WHILE:
@@ -563,14 +593,14 @@ int codeGenStatement(astNode *node, codeGenBufNode *buffer, bool leaveVal,
         break;
 
     case AST_BLOCK:
-        IFJ_GEN_TRY(codeGenStmtBlock(node, buffer, state), -1);
+        IFJ_GEN_TRY(codeGenStmtBlock(node, buffer, state, leaveVal), -1);
         break;
 
     case AST_INT2DOUBLE:
         if (leaveVal) {
             IFJ_GEN_TRY(codeGenStmtInt2Double(node, buffer, state), -1);
         }
-
+        break;
 
     default:
         GEN_CHECK_PRINT(false, -1,
@@ -626,8 +656,8 @@ int codeGenStmtAssign(astNode *assign, codeGenBufNode *buffer,
     return 0;
 }
 
-int codeGenStmtIf(astNode *ifStmt, codeGenBufNode *buffer,
-                  codeGenState *state) {
+int codeGenStmtIf(astNode *ifStmt, codeGenBufNode *buffer, codeGenState *state,
+                  bool leaveVal) {
     // get a unique label id
     const char *labelId = codeGenGetLabelId(buffer);
     GEN_CHECK(labelId != NULL, -1);
@@ -660,16 +690,16 @@ int codeGenStmtIf(astNode *ifStmt, codeGenBufNode *buffer,
         -1);
     IFJ_GEN_TRY(codeGenInsertTxt(headerBuf, buffer), -1);
 
-    // then block
-    IFJ_GEN_TRY(
-        codeGenStatement(ifStmt->data.ifStmt.thenBlock, buffer, false, state),
-        -1);
+    // then block (if the statement is an leaveVal, leave the result on stack)
+    IFJ_GEN_TRY(codeGenStatement(ifStmt->data.ifStmt.thenBlock, buffer,
+                                 leaveVal, state),
+                -1);
     IFJ_GEN_TRY(codeGenInsertTxt(middleBuf, buffer), -1);
 
     // else block
-    IFJ_GEN_TRY(
-        codeGenStatement(ifStmt->data.ifStmt.elseBlock, buffer, false, state),
-        -1);
+    IFJ_GEN_TRY(codeGenStatement(ifStmt->data.ifStmt.elseBlock, buffer,
+                                 leaveVal, state),
+                -1);
     IFJ_GEN_TRY(codeGenInsertTxt(footerBuf, buffer), -1);
 
     return 0;
@@ -893,6 +923,8 @@ int codeGenStmtBinOp(astNode *binOp, codeGenBufNode *buffer,
     // int to float if nescessary)
     IFJ_GEN_TRY(codeGenStatement(binOp->data.binop.left, buffer, true, state),
                 -1);
+    IFJ_GEN_TRY(codeGenStatement(binOp->data.binop.right, buffer, true, state),
+                -1);
 
     // generate the operation
     switch (binOp->data.binop.op) {
@@ -1080,10 +1112,25 @@ int codeGenStmtIdentif(astNode *identif, codeGenBufNode *buffer) {
 }
 
 int codeGenStmtBlock(astNode *block, codeGenBufNode *buffer,
-                     codeGenState *state) {
+                     codeGenState *state, bool expectVal) {
     // check if the child block has been generated
     GEN_CHECK_PRINT(block->data.block.bufferPtr != NULL, -1,
                     "A child block at %p wasn't generated yet", block);
+
+    codeGenBufNode *insertedBuf = (codeGenBufNode *)block->data.block.bufferPtr;
+    if (expectVal) {
+        if (insertedBuf->leftVal == false) {
+            // we expect value but no value on stack
+            GEN_CHECK_PRINT(false, -1,
+                            "Expected child block to leave value but the block "
+                            "hasn't been instructed to\n");
+        }
+    } else {
+        if (insertedBuf->leftVal == true) {
+            // we don't want a value but the block left one (can fix)
+            IFJ_GEN_TRY(codeGenInsertTxt("POPS GF@void\n", buffer), -1);
+        }
+    }
 
     // insert a reference to the child block
     IFJ_GEN_TRY(codeGenInsertBufToTxt(state, buffer,
@@ -1092,10 +1139,13 @@ int codeGenStmtBlock(astNode *block, codeGenBufNode *buffer,
     return 0;
 }
 
-int codeGenStmtInt2Double(astNode *conv, codeGenBufNode *buffer, codeGenState *state) {
-        IFJ_GEN_TRY(codeGenStatement(conv->data.int2doubleConv.value, buffer, true, state), -1);
-        IFJ_GEN_TRY(codeGenInsertTxt("INT2FLOATS\n", buffer), -1);
-        return 0;
+int codeGenStmtInt2Double(astNode *conv, codeGenBufNode *buffer,
+                          codeGenState *state) {
+    IFJ_GEN_TRY(
+        codeGenStatement(conv->data.int2doubleConv.value, buffer, true, state),
+        -1);
+    IFJ_GEN_TRY(codeGenInsertTxt("INT2FLOATS\n", buffer), -1);
+    return 0;
 }
 
 int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer,

@@ -53,7 +53,7 @@ void test1(astNode **root) {
 
     // generate the ast and output the result
     codeGenState *state = codeGenInit();
-    codeGenBlock(state, body);
+    codeGenBlock(state, body, false);
     codeGenFunction(state, node);
     codeGenOutCode(state);
 }
@@ -275,9 +275,9 @@ void test6(astNode **root) {
     symTableInsertVar("result", INT, true);
     symTableInsertVar("i", INT, true);
     beginBlock();
-    codeGenBlock(state, IterWhileBody);
+    codeGenBlock(state, IterWhileBody, false);
     endBlock();
-    codeGenBlock(state, IterBody);
+    codeGenBlock(state, IterBody, false);
 
     codeGenFunction(state, funIter);
 
@@ -285,14 +285,14 @@ void test6(astNode **root) {
     symTableActivateFun("factorialRecursive");
     beginBlock();
     beginBlock();
-    codeGenBlock(state, RecurThenBlock);
+    codeGenBlock(state, RecurThenBlock, false);
     endBlock();
     beginBlock();
     symTableInsertVar("previous", INT, true);
     symTableInsertVar("smaller", INT, true);
-    codeGenBlock(state, RecurElseBlock);
+    codeGenBlock(state, RecurElseBlock, false);
     endBlock();
-    codeGenBlock(state, RecurBody);
+    codeGenBlock(state, RecurBody, false);
 
     codeGenFunction(state, funRecur);
 
@@ -304,17 +304,17 @@ void test6(astNode **root) {
     beginBlock();
     symTableInsertVar("iterative", INT, true);
     symTableInsertVar("recursive", INT, true);
-    codeGenBlock(state, mainElseElse);
+    codeGenBlock(state, mainElseElse, false);
     endBlock();
     beginBlock();
-    codeGenBlock(state, mainElseThen);
+    codeGenBlock(state, mainElseThen, false);
     endBlock();
-    codeGenBlock(state, mainElse);
+    codeGenBlock(state, mainElse, false);
     endBlock();
     beginBlock();
-    codeGenBlock(state, mainThen);
+    codeGenBlock(state, mainThen, false);
     endBlock();
-    codeGenBlock(state, ExampleBody);
+    codeGenBlock(state, ExampleBody, false);
 
     codeGenFunction(state, funExample);
 
