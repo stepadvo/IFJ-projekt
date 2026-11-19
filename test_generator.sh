@@ -1,11 +1,13 @@
 #!/bin/bash
 
-expectedOut=("put expected outputs here" "1" "" "[2][4][5]
+expectedOut=("put expected outputs here" "1" "[2][4][5]
 result: 17" "safe: true
 either: true
 ready" "tbd" "iterative: 120
-recursive: 120")
-message=("put test message here" "Simple test" "" "Test from funexp extension example" "Test from Boolthen extension example" "Test from Control extension example" "Test from factorial example")
+recursive: 120" "values: true () 1.50
+unit_print: ()
+res: 7.50")
+message=("put test message here" "Simple test" "Test from funexp extension example" "Test from Boolthen extension example" "Test from Control extension example" "Test from factorial example" "Test yet untested")
 
 for i in {1..6}; do
     printf "\n"

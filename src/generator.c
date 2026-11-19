@@ -1216,10 +1216,7 @@ int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer,
             state->builtinNeeded[FUN_BOOLTOSTR] = true;
             return 1;
         case UNIT:
-            IFJ_GEN_TRY(codeGenInsertTxt("POPS GF@void\n"
-                                         "PUSHS sring@()\n",
-                                         buffer),
-                        -1);
+            IFJ_GEN_TRY(codeGenInsertTxt("PUSHS string@()\n", buffer), -1);
             break;
         default:
             // should not happen, check
