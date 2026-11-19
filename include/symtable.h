@@ -126,6 +126,8 @@ funData symTableGetActive(void);
  * @details The id must be unique within a block. If an id is identical as an id
  * in a "higher" block, the id from the "higher" block is masked and can be used
  * when the current block is ended
+ * @details All variables will be assigned an id of type int, that will be
+ * unique within the local table (function)
  */
 int symTableInsertVar(const char *id, varType dataType, bool isConst);
 
@@ -136,13 +138,15 @@ int symTableInsertVar(const char *id, varType dataType, bool isConst);
  * block)
  *
  * @param id identifier of the symbol to be found
+ * @param uniqueId the value at *uniqueId will be set as the unique id of the
+ * variable if uniqueId != NULL
  *
  * @return  data of the variable when found
  *          {.id = NULL, .dataType = UNKNOWN, .isConst = true} when not found
  *          {.id = NULL, .dataType = UNKNOWN, .isConst = false} when no function
  * is active
  */
-varData symTableFindVar(const char *id);
+varData symTableFindVar(const char *id, int *uniqeId);
 
 /**
  * @brief finds the symbol only within the current block of the active function
@@ -202,6 +206,35 @@ int endBlock(void);
  * @returns the block depth (positive number) or -1 when no function is active
  */
 int symTableBlockDepth(void);
+
+/**
+ * @brief returns the number of function symbols in the global symbol table
+ */
+int symTableGetFunNum(void);
+
+/**
+ * @brief returns the number of visible symbols in the local table of the active
+ * function
+ *
+ * @return -1 when no function is active else the number of visible (not masked)
+ * symbols
+ */
+int symTableGetVisVarNum(void);
+
+/**
+ * @brief returns the number of all symbols in the local table of the active
+ * function
+ *
+ * @return -1 when no function is active else the number of all symbols
+ */
+int symTableGetVarNum(void);
+
+/* @brief returns whether the global function table is empty */
+bool symTableIsEmpty(void);
+
+/* @brief returns 1 if the local table of the active function is empty, 0 if
+ * not, -1 it no function is active */
+int symTableIsLocEmpty(void);
 
 #endif
 

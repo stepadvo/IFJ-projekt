@@ -21,6 +21,7 @@ typedef struct {
     int dataMasked; // the data that this entry masked in the BST, -1 if no data
                     // is masked
     // maybe something for unset data type checking
+    int uniqueId;
 } varDataPriv;
 
 /** @brief a structure of the local variable symbol table for each function */
@@ -34,6 +35,8 @@ typedef struct {
     varDataPriv *varArr;
     int varArrCapacity;
     // varArrSize is blockTops[blockNum]
+
+    int uqIdsUsed;
 } vSymTable;
 
 /** @brief private function symbol data (contains both private and public data)
@@ -111,13 +114,15 @@ int symTableInsertFun(const char *id, varType retType, int paramCount,
                       paramData params[]) {
     // insert the id into the BST
     char *funId; // for keeping the ptr to the id
-    int inserted = BSTInsert(gFunctionTable.tree, id,
-                             gFunctionTable.funArrSize + 1, &funId);
-    if (inserted == -2)
+    int inserted =
+        BSTInsert(gFunctionTable.tree, id, gFunctionTable.funArrSize, &funId);
+    if (inserted == -2) {
         return 1; // the key is duplicate
-    if (inserted != 0)
+    }
+    if (inserted != 0) {
         return -1; // memory allocation err (also other values expecp success to
                    // be sure)
+    }
 
     // ensure the funArr is big enough
     if (gFunctionTable.funArrSize >= gFunctionTable.funArrCapacity) {
@@ -150,8 +155,9 @@ int symTableInsertFun(const char *id, varType retType, int paramCount,
     funDataPriv *fun = gFunctionTable.funArr + gFunctionTable.funArrSize++;
 
     // initialize the local var symbol table and insert the parameters
-    if (locSymTableInit(&fun->localTable, paramCount, params) != 0)
+    if (locSymTableInit(&fun->localTable, paramCount, params) != 0) {
         return -1;
+    }
 
     // insert the function data into the array
     fun->pubData =
@@ -164,11 +170,13 @@ int symTableSetNewRetType(bool active, const char *id, varType newRetType) {
     funDataPriv *fun = getFun(active, id);
 
     // check if the funtion is found
-    if (!fun)
+    if (!fun) {
         return 1;
+    }
 
-    if (fun->pubData.retType != UNKNOWN)
+    if (fun->pubData.retType != UNKNOWN) {
         return 2; // the return type has been set
+    }
 
     fun->pubData.retType = newRetType;
     return 0;
@@ -177,8 +185,9 @@ int symTableSetNewRetType(bool active, const char *id, varType newRetType) {
 funData symTableFindFun(const char *id) {
     size_t *foundFun = BSTSearch(gFunctionTable.tree, id);
 
-    if (!foundFun)
+    if (!foundFun) {
         return (funData){.id = NULL};
+    }
 
     return gFunctionTable.funArr[*foundFun].pubData;
 }
@@ -196,78 +205,113 @@ int symTableActivateFun(const char *id) {
 }
 
 funData symTableGetActive(void) {
-    if (!gFunctionTable.active)
+    if (!gFunctionTable.active) {
         return (funData){.id = NULL};
+    }
     return gFunctionTable.active->pubData;
 }
 
 int symTableInsertVar(const char *id, varType dataType, bool isConst) {
-    if (!gFunctionTable.active)
+    if (!gFunctionTable.active) {
         return 2;
+    }
 
     vSymTable *locTable = &gFunctionTable.active->localTable;
 
-    if (locTable->blockNum <= 0)
+    // get an unique id inside the local table
+    int uniqueId = locTable->uqIdsUsed++;
+
+    if (locTable->blockNum <= 0) {
         return 4;
+    }
+
+    if (dataType == UNKNOWN || dataType == ANY) {
+        return 3;
+    }
 
     size_t *foundVarIdxP = BSTSearch(locTable->tree, id);
 
     // if a variable with the same id is found
     if (foundVarIdxP) {
         if (locTable->varArr[*foundVarIdxP].pubData.blockDepth ==
-            locTable->blockNum) {
-            // the found variable is in the current block
+                locTable->blockNum ||
+            locTable->blockNum == 1) {
+            // the found variable is in the current block or we are in the first
+            // block and it is a parameter
             return 1;
         }
 
         // else create a new variable and mask the old one
         int varIdx = locTableInsertVar(
-            locTable, (varDataPriv){{.id = id,
-                                     .dataType = dataType,
-                                     .isConst = isConst,
-                                     .blockDepth = locTable->blockNum},
-                                    *foundVarIdxP});
-        if (varIdx < 0)
+            locTable,
+            (varDataPriv){{.id = locTable->varArr[*foundVarIdxP]
+                                     .pubData.id, // copy the id from the data
+                                                  // we are masking
+                           .dataType = dataType,
+                           .isConst = isConst,
+                           .blockDepth = locTable->blockNum},
+                          *foundVarIdxP,
+                          uniqueId});
+        if (varIdx < 0) {
             return -1;
+        }
         *foundVarIdxP = varIdx;
     } else {
         // else create a new variable
         int varIdx = locTableInsertVar(
-            locTable, (varDataPriv){{.id = id,
-                                     .dataType = dataType,
-                                     .isConst = isConst,
-                                     .blockDepth = locTable->blockNum},
-                                    -1});
-        if (varIdx < 0)
+            locTable,
+            (varDataPriv){{.id = NULL, // for now, it will be replaced soon
+                           .dataType = dataType,
+                           .isConst = isConst,
+                           .blockDepth = locTable->blockNum},
+                          -1,
+                          uniqueId});
+        if (varIdx < 0) {
             return -1;
+        }
+
+        char *idPtr;
+        if (BSTInsert(locTable->tree, id, varIdx, &idPtr) != 0) {
+            return -1;
+        }
+        locTable->varArr[varIdx].pubData.id = idPtr;
     }
     return 0;
 }
 
-varData symTableFindVar(const char *id) {
-    if (!gFunctionTable.active)
+varData symTableFindVar(const char *id, int *uniqueId) {
+    if (!gFunctionTable.active) {
         return (varData){NULL, UNKNOWN, false, 0};
+    }
 
     vSymTable *locTable = &gFunctionTable.active->localTable;
     size_t *varIdxP = BSTSearch(locTable->tree, id);
 
     // check if it is found
-    if (!varIdxP)
+    if (!varIdxP) {
         return (varData){NULL, UNKNOWN, true, 0};
+    }
+
+    // if the user wants the unique id
+    if (uniqueId) {
+        *uniqueId = locTable->varArr[*varIdxP].uniqueId;
+    }
 
     return locTable->varArr[*varIdxP].pubData;
 }
 
 varData symTableFindVarCurrBlock(const char *id) {
-    if (!gFunctionTable.active)
+    if (!gFunctionTable.active) {
         return (varData){NULL, UNKNOWN, false, 0};
+    }
 
     vSymTable *locTable = &gFunctionTable.active->localTable;
     size_t *varIdxP = BSTSearch(locTable->tree, id);
 
     // check if it is found
-    if (!varIdxP)
+    if (!varIdxP) {
         return (varData){NULL, UNKNOWN, true, 0};
+    }
 
     varData foundVar = locTable->varArr[*varIdxP].pubData;
     // check if it is in the current block (works for all blocks excepth block
@@ -290,42 +334,49 @@ paramData symTableGetParam(bool active, const char *id, int number) {
     // check if the function exists
     funDataPriv *fun = getFun(active, id);
 
-    if (!fun)
+    if (!fun) {
         return (paramData){NULL, UNKNOWN};
+    }
 
     // check if the parameter exists
-    if (number >= fun->pubData.paramCount)
+    if (number >= fun->pubData.paramCount) {
         return (paramData){NULL, ANY};
+    }
 
     varData param = fun->localTable.varArr[number].pubData;
     return (paramData){param.id, param.dataType};
 }
 
 int beginBlock(void) {
-    if (!gFunctionTable.active)
+    if (!gFunctionTable.active) {
         return -1;
+    }
 
     vSymTable *locTable = &gFunctionTable.active->localTable;
 
     // check if number of blocks exceeded (return the maximum value)
-    if (locTable->blockNum >= MAX_BLOCKS - 1)
+    if (locTable->blockNum >= MAX_BLOCKS - 1) {
         return MAX_BLOCKS - 1;
+    }
 
     // set the top of the new block as the top of the previous block
     locTable->blockTops[locTable->blockNum + 1] =
         locTable->blockTops[locTable->blockNum];
-    return locTable->blockNum++;
+    locTable->blockNum++;
+    return locTable->blockNum;
 }
 
 int endBlock(void) {
-    if (!gFunctionTable.active)
+    if (!gFunctionTable.active) {
         return -1;
+    }
 
     vSymTable *locTable = &gFunctionTable.active->localTable;
 
     // check if there are no more blocks to end
-    if (locTable->blockNum <= 0)
+    if (locTable->blockNum <= 0) {
         return 0;
+    }
 
     // remove all the variables from the BST
     size_t *masked;
@@ -345,12 +396,14 @@ int endBlock(void) {
     }
 
     // decrease the number of blocks
-    return locTable->blockNum--;
+    locTable->blockNum--;
+    return locTable->blockNum;
 }
 
 int symTableBlockDepth(void) {
-    if (!gFunctionTable.active)
+    if (!gFunctionTable.active) {
         return -1;
+    }
 
     return gFunctionTable.active->localTable.blockNum;
 }
@@ -380,7 +433,8 @@ int locSymTableInit(vSymTable *table, int paramCount, paramData params[]) {
             free(paramArr);
             return -1;
         }
-        varDataPriv param = {{key, params[0].dataType, true, 0}, -1};
+        // set the unique ids as the parameter number
+        varDataPriv param = {{key, params[i].dataType, true, 0}, -1, i};
         paramArr[i] = param;
     }
 
@@ -388,7 +442,8 @@ int locSymTableInit(vSymTable *table, int paramCount, paramData params[]) {
     table->blockTops[0] = paramCount;
     table->varArr = paramArr;
     table->varArrCapacity = paramCount;
-
+    // set the uqIdsUsed as the number of parameters
+    table->uqIdsUsed = paramCount;
     return 0;
 }
 
@@ -403,13 +458,15 @@ funDataPriv *getFun(bool active, const char *id) {
 
     if (active) {
         // check if a function is active
-        if (!fun)
+        if (!fun) {
             return NULL;
+        }
     } else {
         // check if funciton named id is found
         size_t *funIndex = BSTSearch(gFunctionTable.tree, id);
-        if (!funIndex)
+        if (!funIndex) {
             return NULL;
+        }
 
         // set the fun ptr as a ptr to the (*funIndex)th element
         fun = gFunctionTable.funArr + (*funIndex);
@@ -421,21 +478,57 @@ int locTableInsertVar(vSymTable *locTable, varDataPriv data) {
     // make sure the array is big enough
     int firstUnusedIdx = locTable->blockTops[locTable->blockNum];
     if (locTable->varArrCapacity <= firstUnusedIdx) {
-        varDataPriv *newArr =
-            realloc(locTable->varArr,
-                    sizeof(varDataPriv) * locTable->varArrCapacity * 2);
+        // resize the previous array to fit the new variable
+        int newCap;
+        varDataPriv *newArr;
+        if (locTable->varArrCapacity == 0) {
+            // start at 32 so short functions don't need any other allocation
+            newCap = 32;
+            newArr = malloc(sizeof(varDataPriv) * newCap);
+        } else {
+            newCap = locTable->varArrCapacity * 2;
+            newArr = realloc(locTable->varArr, sizeof(varDataPriv) * newCap);
+        }
 
         if (!newArr) {
             setErrCode(99);
             return -1;
         }
 
-        locTable->varArrCapacity *= 2;
+        locTable->varArr = newArr;
+        locTable->varArrCapacity = newCap;
     }
+
     // insert the new variable
     locTable->varArr[firstUnusedIdx] = data;
     locTable->blockTops[locTable->blockNum]++;
     return firstUnusedIdx;
+}
+
+int symTableGetFunNum() { return BSTSize(gFunctionTable.tree); }
+
+int symTableGetVisVarNum() {
+    if (!gFunctionTable.active) {
+        return -1;
+    }
+    return BSTSize(gFunctionTable.active->localTable.tree);
+}
+
+int symTableGetVarNum() {
+    if (!gFunctionTable.active) {
+        return -1;
+    }
+    vSymTable locTable = gFunctionTable.active->localTable;
+    return locTable.blockTops[locTable.blockNum];
+}
+
+bool symTableIsEmpty() { return BSTSize(gFunctionTable.tree) == 0; }
+
+int symTableIsLocEmpty() {
+    if (!gFunctionTable.active) {
+        return -1;
+    }
+    return BSTSize(gFunctionTable.active->localTable.tree) == 0;
 }
 
 /*

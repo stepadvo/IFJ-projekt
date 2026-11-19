@@ -54,6 +54,7 @@ void BSTClear_R(bstNode_t *root) {
     BSTClear_R(root->right);
     BSTClear_R(root->left);
 
+    free(root->key);
     free(root);
 }
 
@@ -314,6 +315,7 @@ bstNode_t *BSTRemove_R(bstNode_t *root, const char *key, size_t *oldData,
             bstNode_t *lChild = root->left;
             *err = 0;
             *oldData = root->data;
+            free(root->key);
             free(root);
             return lChild;
 
@@ -323,6 +325,7 @@ bstNode_t *BSTRemove_R(bstNode_t *root, const char *key, size_t *oldData,
             bstNode_t *rChild = root->right;
             *err = 0;
             *oldData = root->data;
+            free(root->key);
             free(root);
             return rChild;
 
@@ -331,6 +334,7 @@ bstNode_t *BSTRemove_R(bstNode_t *root, const char *key, size_t *oldData,
         else {
             *err = 0;
             *oldData = root->data;
+            free(root->key);
             free(root);
             return NULL;
         }
