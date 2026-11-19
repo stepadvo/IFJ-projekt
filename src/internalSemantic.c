@@ -35,9 +35,8 @@ void analyzeFunction(SemCtx *ctx, astNode *func) {
         semError(99, "function is missing in symbol table");
     }
     beginBlock();
-    if (body->type == AST_BLOCK)
-        (void)analyzeBlock(ctx, body);
     if (body != NULL && body->type == AST_BLOCK) {
+        (void)analyzeBlock(ctx, body);
         if (ERRCODE == 0) {
             codeGenBlock(state, body, false);
         }
@@ -65,10 +64,10 @@ varType analyzeBlock(SemCtx *ctx, astNode *block) {
 }
 /** @brief analyzes single statement*/
 varType analyzeStatement(SemCtx *ctx, astNode *stmt) {
-    if (stmt == NULL)
-        setErrCode(6);
-    semError(6, "missing statemnt");
-    return UNIT;
+    if (stmt == NULL) {
+        semError(6, "missing statemnt");
+        return UNIT;
+    }
     switch (stmt->type) {
     case AST_VAR_DEF:
         analyzeVarDef(ctx, stmt);
@@ -78,7 +77,6 @@ varType analyzeStatement(SemCtx *ctx, astNode *stmt) {
         return UNIT;
     case AST_IF:
         return analyzeIf(ctx, stmt);
-        ;
     case AST_WHILE:
         analyzeWhile(ctx, stmt);
         return UNIT;
@@ -154,7 +152,6 @@ varType analyzeExpr(SemCtx *ctx, astNode *expr) {
             } else if (rightType == INT && leftType == INT) {
                 expr->resultType = INT;
             } else {
-                setErrCode(6);
                 semError(6, "invalid bin. operand types");
             }
             break;
@@ -175,8 +172,8 @@ varType analyzeExpr(SemCtx *ctx, astNode *expr) {
                     expr->data.binop.op = I_DIVIDE;
                     expr->resultType = INT;
                 }
+                expr->resultType = INT;
             } else {
-                setErrCode(6);
                 semError(6, "invalid bin. operand types");
             }
             break;
@@ -197,21 +194,24 @@ varType analyzeExpr(SemCtx *ctx, astNode *expr) {
             } else if (leftType == STRING && rightType == STRING) {
                 expr->resultType = BOOL;
             } else {
-                setErrCode(6);
                 semError(6, "invalid comp. operand types");
             }
             break;
         }
         case EQUAL:
         case NOT_EQUAL:
-            if (isNumeric(leftType) && isNumeric(rightType)) {
+            if (leftType == rightType && leftType != UNKNOWN) {
+                expr->resultType = BOOL;
+            } else if (isNumeric(leftType) && isNumeric(rightType)) {
                 if (leftType == INT && rightType == DOUBLE)
                     expr->data.binop.left =
-                        wrapInt2Double(expr->data.binop.right);
+                        wrapInt2Double(expr->data.binop.left);
                 if (leftType == DOUBLE && rightType == INT)
                     expr->data.binop.right =
                         wrapInt2Double(expr->data.binop.right);
                 expr->resultType = BOOL;
+            } else {
+                semError(6, "comparing requires numericals");
             }
             break;
         case AND:
@@ -219,12 +219,10 @@ varType analyzeExpr(SemCtx *ctx, astNode *expr) {
             if (leftType == BOOL && rightType == BOOL) {
                 expr->resultType = BOOL;
             } else {
-                setErrCode(6);
                 semError(6, "operands of && and || must be Boolean");
             }
             break;
         default:
-            setErrCode(6);
             semError(6, "unknown binary operator");
         }
         return expr->resultType;
@@ -238,14 +236,12 @@ varType analyzeExpr(SemCtx *ctx, astNode *expr) {
             else if (operandType == DOUBLE)
                 expr->resultType = DOUBLE;
             else {
-                setErrCode(6);
                 semError(6, "unary minus needs a number");
             }
         } else if (expr->data.unop.op == NOT) {
             if (operandType == BOOL)
                 expr->resultType = BOOL;
             else {
-                setErrCode(6);
                 semError(6, "! needs Boolean");
             }
         } else {
@@ -258,11 +254,9 @@ varType analyzeExpr(SemCtx *ctx, astNode *expr) {
 
         funData fn = symTableFindFun(name);
         if (fn.id == NULL) {
-            setErrCode(3);
             semError(3, "undefined function");
         }
         if (expr->data.funcCall.argCount != (size_t)fn.paramCount) {
-            setErrCode(5);
             semError(5, "wrong number of arguments");
         }
         for (size_t i = 0; i < expr->data.funcCall.argCount; i++) {
@@ -282,7 +276,7 @@ varType analyzeExpr(SemCtx *ctx, astNode *expr) {
 
     default:
         semError(10, "unknown expression type");
-        setErrCode(10);
+
         return UNIT;
     }
 }
@@ -293,23 +287,19 @@ void analyzeVarDef(SemCtx *ctx, astNode *stmt) {
     if (finalType == UNKNOWN) {
         finalType = initType;
         if (finalType == UNKNOWN) {
-            setErrCode(6);
             semError(6, "connot find type");
         }
 
     } else if (!isCompatible(finalType, initType)) {
-        setErrCode(6);
         semError(6, "init type mismatch");
     }
 
     int insert = symTableInsertVar(stmt->data.varDef.name, finalType,
                                    stmt->data.varDef.isConstant);
     if (insert == 1) {
-        setErrCode(4);
         semError(4, "variable redefinition");
-    }
-    if (insert != 0) {
-        setErrCode(99);
+    } else if (insert != 0) {
+
         semError(99, "cannot inster value");
     }
 
@@ -319,18 +309,15 @@ void analyzeAssign(SemCtx *ctx, astNode *stmt) {
     int uniqueId = 0;
     varData var = symTableFindVar(stmt->data.assign.name, &uniqueId);
     if (var.id == NULL) {
-        setErrCode(3);
         semError(3, "assigment to undef val");
     }
 
     if (var.isConst) {
-        setErrCode(7);
         semError(7, "assigment to const val");
     }
 
     varType valueType = analyzeExpr(ctx, stmt->data.assign.value);
     if (!isCompatible(var.dataType, valueType)) {
-        setErrCode(6);
         semError(6, "asssigned value has wrong type");
     }
     stmt->resultType = var.dataType;
@@ -339,7 +326,6 @@ void analyzeAssign(SemCtx *ctx, astNode *stmt) {
 varType analyzeIf(SemCtx *ctx, astNode *stmt) {
     varType condType = analyzeExpr(ctx, stmt->data.ifStmt.condition);
     if (condType != BOOL) {
-        setErrCode(6);
         semError(6, "if condition must be Boolean");
     }
 
@@ -382,7 +368,6 @@ varType analyzeIf(SemCtx *ctx, astNode *stmt) {
 void analyzeWhile(SemCtx *ctx, astNode *stmt) {
     varType condType = analyzeExpr(ctx, stmt->data.whileStmt.condition);
     if (condType != BOOL) {
-        setErrCode(6);
         semError(6, "while condition must be Boolean");
     }
     astNode *body = stmt->data.whileStmt.bodyBlock;
@@ -402,33 +387,29 @@ void analyzeFor(SemCtx *ctx, astNode *stmt) {
     varType stepType = analyzeExpr(ctx, stmt->data.forStmt.step);
     varType endType = analyzeExpr(ctx, stmt->data.forStmt.end);
 
-    if (!isNumeric(startType) || !isNumeric(endType) || !isNumeric(stepType)) {
-        setErrCode(6);
-        semError(6, "for start, step and end must be numeric");
+    if (startType != INT || endType != INT || stepType != INT) {
+        semError(6, "for start, step and end must be int");
     }
 
     beginBlock();
 
     int insert = symTableInsertVar(stmt->data.forStmt.iteratorName, INT, true);
     if (insert != 0) {
-        setErrCode(4);
+        semError(4, "cannot insert variable");
     }
     for (size_t i = 0; i < stmt->data.forStmt.guardCount; i++) {
         varType guardType = analyzeExpr(ctx, stmt->data.forStmt.guards[i]);
         if (guardType != BOOL) {
-            setErrCode(6);
             semError(6, "for guard must be Boolean");
         }
     }
 
     astNode *body = stmt->data.forStmt.body;
     if (body != NULL) {
-        if (body != NULL) {
-            if (body->type == AST_BLOCK) {
-                analyzeBlock(ctx, body);
-                if (ERRCODE == 0)
-                    codeGenBlock(state, body, false);
-            }
+        if (body->type == AST_BLOCK) {
+            analyzeBlock(ctx, body);
+            if (ERRCODE == 0)
+                codeGenBlock(state, body, false);
         } else {
             analyzeStatement(ctx, body);
         }
@@ -436,24 +417,35 @@ void analyzeFor(SemCtx *ctx, astNode *stmt) {
     endBlock();
 }
 void analyzeReturn(SemCtx *ctx, astNode *stmt) {
+    if (stmt == NULL) {
+        semError(6, "missing return statement");
+        return;
+    }
 
     funData activeFun = symTableGetActive();
     varType expected = activeFun.retType;
 
+    if (expected == UNKNOWN) {
+        semError(6, "return requires explicit return type");
+        return;
+    }
+
     if (stmt->data.returnStmt.value != NULL) {
         varType actual = analyzeExpr(ctx, stmt->data.returnStmt.value);
         if (expected == UNIT) {
-            setErrCode(6);
             semError(6, "unit function cannot return a val");
+            return;
         } else if (actual != UNKNOWN && !isCompatible(expected, actual)) {
-            setErrCode(6);
             semError(6, "return val type mismatch");
+            return;
         }
+        stmt->resultType = expected;
     } else {
         if (expected != UNIT && expected != UNKNOWN) {
-            setErrCode(6);
             semError(6, "missing return val");
+            return;
         }
+        stmt->resultType = UNIT;
     }
 }
 
@@ -467,7 +459,7 @@ bool isNumeric(varType t) { return t == INT || t == DOUBLE; }
 static astNode *wrapInt2Double(astNode *operand) {
     astNode *conv = createInt2DoubleNode(operand);
     if (conv == NULL) {
-        setErrCode(99);
+
         semError(99, "failed to create AST_INT2DOUBLE node");
         return operand;
     }
