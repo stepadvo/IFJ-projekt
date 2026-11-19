@@ -222,7 +222,7 @@ struct astNode {
             size_t capacity;
             /**< Used internally by the code generator. Safe to ignore for now.
              */
-            int bufferNum;
+            void *bufferPtr;
         } block;
 
         /**

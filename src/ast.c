@@ -69,7 +69,7 @@ astNode *createFuncDefNode(char *name, bool isMain, astFuncParam *params,
 
 astNode *createBlockNode(void) {
     astNode *node = newNode(AST_BLOCK);
-    node->data.block.bufferNum = -1;
+    node->data.block.bufferPtr = NULL;
     return node;
 }
 
