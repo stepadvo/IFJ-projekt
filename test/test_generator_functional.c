@@ -70,7 +70,128 @@ void test2(astNode **root) {
 
 void test3(astNode **root) {
     astNode *node = *root;
-    (void)node;
+    // prepare the ast
+    node = createProgramNode();
+
+    Token liter1 = {.type = TOKEN_INT_LITERAL, .attribute.intValue = 1};
+    Token liter2 = {.type = TOKEN_INT_LITERAL, .attribute.intValue = 2};
+    Token liter3 = {.type = TOKEN_INT_LITERAL, .attribute.intValue = 3};
+    Token liter4 = {.type = TOKEN_INT_LITERAL, .attribute.intValue = 4};
+
+    // prepare function: traced(value: Int): Int
+    astNode *tracedBody = createBlockNode();
+    astFuncParam paramsTraced[1] = {{.name = "value", .type = INT}};
+    astNode *funTraced =
+        createFuncDefNode("traced", false, paramsTraced, 1, tracedBody);
+    funTraced->data.funcDef.explicitReturnType = INT;
+
+    // print("[")
+    astNode *callOpenBracket = createFuncCallNode("print");
+    Token strOpenBracket = {.type = TOKEN_STRING_LITERAL,
+                            .attribute.text.data = "[",
+                            .attribute.text.length = 1};
+    addArgumentToCall(callOpenBracket, createLiteralNode(&strOpenBracket));
+    addStatementToBlock(tracedBody, callOpenBracket);
+
+    // print(value)
+    astNode *callPrintValue = createFuncCallNode("print");
+    addArgumentToCall(callPrintValue, createIdentifierNode("value"));
+    addStatementToBlock(tracedBody, callPrintValue);
+
+    // print("]")
+    astNode *callCloseBracket = createFuncCallNode("print");
+    Token strCloseBracket = {.type = TOKEN_STRING_LITERAL,
+                             .attribute.text.data = "]",
+                             .attribute.text.length = 1};
+    addArgumentToCall(callCloseBracket, createLiteralNode(&strCloseBracket));
+    addStatementToBlock(tracedBody, callCloseBracket);
+
+    // return value (implicit return of last expression)
+    addStatementToBlock(tracedBody,
+                        createReturnNode(createIdentifierNode("value")));
+
+    // prepare main function: funexpExample(): Unit
+    astNode *exampleBody = createBlockNode();
+    astNode *funExample =
+        createFuncDefNode("funexpExample", true, NULL, 0, exampleBody);
+    funExample->data.funcDef.explicitReturnType = UNIT;
+
+    // val result = traced(2) + 3 * traced(traced(4) + 1)
+    astNode *callTraced2 = createFuncCallNode("traced");
+    addArgumentToCall(callTraced2, createLiteralNode(&liter2));
+
+    astNode *callTraced4 = createFuncCallNode("traced");
+    addArgumentToCall(callTraced4, createLiteralNode(&liter4));
+
+    astNode *innerAdd =
+        createBinopNode(PLUS, callTraced4, createLiteralNode(&liter1));
+
+    astNode *callTracedOuter = createFuncCallNode("traced");
+    addArgumentToCall(callTracedOuter, innerAdd);
+
+    astNode *mulExpr =
+        createBinopNode(MULTIPLY, createLiteralNode(&liter3), callTracedOuter);
+
+    astNode *resultExpr = createBinopNode(PLUS, callTraced2, mulExpr);
+
+    addStatementToBlock(exampleBody,
+                        createVarDefNode("result", true, INT, resultExpr));
+
+    // print("\nresult: ")
+    astNode *callPrintResultLabel = createFuncCallNode("print");
+    Token strResultLabel = {.type = TOKEN_STRING_LITERAL,
+                            .attribute.text.data = "\nresult: ",
+                            .attribute.text.length = 9};
+    addArgumentToCall(callPrintResultLabel, createLiteralNode(&strResultLabel));
+    addStatementToBlock(exampleBody, callPrintResultLabel);
+
+    // print(toStr(result))
+    astNode *callToStr = createFuncCallNode("toStr");
+    addArgumentToCall(callToStr, createIdentifierNode("result"));
+    callToStr->data.funcCall.argIfAny = INT;
+
+    astNode *callPrintResultVal = createFuncCallNode("print");
+    addArgumentToCall(callPrintResultVal, callToStr);
+    addStatementToBlock(exampleBody, callPrintResultVal);
+
+    // print("\n")
+    astNode *callPrintNewline = createFuncCallNode("print");
+    Token strNewline = {.type = TOKEN_STRING_LITERAL,
+                        .attribute.text.data = "\n",
+                        .attribute.text.length = 1};
+    addArgumentToCall(callPrintNewline, createLiteralNode(&strNewline));
+    addStatementToBlock(exampleBody, callPrintNewline);
+
+    addFunctionToProgram(node, funTraced);
+    addFunctionToProgram(node, funExample);
+
+    // prepare the symtable
+    symTableInit();
+    paramData paramTraced[1] = {{.id = "value", .dataType = INT}};
+    symTableInsertFun("traced", INT, 1, paramTraced);
+    symTableInsertFun("funexpExample", UNIT, 0, NULL);
+    paramData paramPrint[1] = {{.id = "n", .dataType = INT}};
+    symTableInsertFun("print", UNIT, 1, paramPrint);
+    symTableInsertFun("toStr", STRING, 1, paramPrint);
+
+    codeGenState *state = codeGenInit();
+
+    // generate traced
+    symTableActivateFun("traced");
+    beginBlock();
+    codeGenBlock(state, tracedBody, false);
+    endBlock();
+    codeGenFunction(state, funTraced);
+
+    // generate funexpExample
+    symTableActivateFun("funexpExample");
+    beginBlock();
+    symTableInsertVar("result", INT, false);
+    codeGenBlock(state, exampleBody, false);
+    endBlock();
+    codeGenFunction(state, funExample);
+
+    codeGenOutCode(state);
     // prepare the ast
 
     // prepare the symtable
@@ -80,12 +201,224 @@ void test3(astNode **root) {
 
 void test4(astNode **root) {
     astNode *node = *root;
-    (void)node;
     // prepare the ast
+    node = createProgramNode();
+
+    Token liter0 = {.type = TOKEN_INT_LITERAL, .attribute.intValue = 0};
+    Token liter1 = {.type = TOKEN_INT_LITERAL, .attribute.intValue = 1};
+    Token liter2 = {.type = TOKEN_INT_LITERAL, .attribute.intValue = 2};
+    Token liter10 = {.type = TOKEN_INT_LITERAL, .attribute.intValue = 10};
+
+    // prepare function: negate(value: Boolean): Boolean
+    astNode *negateBody = createBlockNode();
+    astFuncParam paramsNegate[1] = {{.name = "value", .type = BOOL}};
+    astNode *funNegate =
+        createFuncDefNode("negate", false, paramsNegate, 1, negateBody);
+    funNegate->data.funcDef.explicitReturnType = BOOL;
+
+    // !value (implicit return of last expression)
+    addStatementToBlock(negateBody, createReturnNode(createUnopNode(
+                                        NOT, createIdentifierNode("value"))));
+
+    // prepare main function: boolthenExample(): Unit
+    astNode *exampleBody = createBlockNode();
+    astNode *funExample =
+        createFuncDefNode("boolthenExample", true, NULL, 0, exampleBody);
+    funExample->data.funcDef.explicitReturnType = UNIT;
+
+    // val enabled = readBoolean()
+    Token param = {.type = TOKEN_BOOL_LITERAL, .attribute.boolValue = true};
+    addStatementToBlock(
+        exampleBody,
+        createVarDefNode("enabled", true, BOOL, createLiteralNode(&param)));
+
+    // var divisor = 0
+    addStatementToBlock(
+        exampleBody,
+        createVarDefNode("divisor", false, INT, createLiteralNode(&liter0)));
+
+    // if enabled then divisor = 2 else ()
+    astNode *divThenBlock = createBlockNode();
+    addStatementToBlock(
+        divThenBlock, createAssignNode("divisor", createLiteralNode(&liter2)));
+
+    astNode *divElseBlock = createBlockNode();
+    addStatementToBlock(divElseBlock, createUnitNode());
+
+    astNode *divIf = createIfNode(createIdentifierNode("enabled"), divThenBlock,
+                                  divElseBlock);
+    addStatementToBlock(exampleBody, divIf);
+
+    // val safe = divisor != 0 && (10 / divisor > 1)
+    astNode *divisorNotZero = createBinopNode(
+        NOT_EQUAL, createIdentifierNode("divisor"), createLiteralNode(&liter0));
+    astNode *divTenByDivisor = createBinopNode(
+        I_DIVIDE, createLiteralNode(&liter10), createIdentifierNode("divisor"));
+    astNode *greaterThanOne =
+        createBinopNode(GREATER, divTenByDivisor, createLiteralNode(&liter1));
+    astNode *safeExpr = createBinopNode(AND, divisorNotZero, greaterThanOne);
+    addStatementToBlock(exampleBody,
+                        createVarDefNode("safe", true, BOOL, safeExpr));
+
+    // val inverted = negate(enabled)
+    astNode *callNegate = createFuncCallNode("negate");
+    addArgumentToCall(callNegate, createIdentifierNode("enabled"));
+    addStatementToBlock(exampleBody,
+                        createVarDefNode("inverted", true, BOOL, callNegate));
+
+    // val either = enabled || inverted
+    astNode *eitherExpr = createBinopNode(OR, createIdentifierNode("enabled"),
+                                          createIdentifierNode("inverted"));
+    addStatementToBlock(exampleBody,
+                        createVarDefNode("either", true, BOOL, eitherExpr));
+
+    // print("safe: ")
+    astNode *callPrintSafeLbl = createFuncCallNode("print");
+    Token strSafeLbl = {.type = TOKEN_STRING_LITERAL,
+                        .attribute.text.data = "safe: ",
+                        .attribute.text.length = 6};
+    addArgumentToCall(callPrintSafeLbl, createLiteralNode(&strSafeLbl));
+    addStatementToBlock(exampleBody, callPrintSafeLbl);
+
+    // print(safe)
+    astNode *callPrintSafeVal = createFuncCallNode("print");
+    addArgumentToCall(callPrintSafeVal, createIdentifierNode("safe"));
+    addStatementToBlock(exampleBody, callPrintSafeVal);
+
+    // print("\neither: ")
+    astNode *callPrintEitherLbl = createFuncCallNode("print");
+    Token strEitherLbl = {.type = TOKEN_STRING_LITERAL,
+                          .attribute.text.data = "\neither: ",
+                          .attribute.text.length = 9};
+    addArgumentToCall(callPrintEitherLbl, createLiteralNode(&strEitherLbl));
+    addStatementToBlock(exampleBody, callPrintEitherLbl);
+
+    // print(either)
+    astNode *callPrintEitherVal = createFuncCallNode("print");
+    addArgumentToCall(callPrintEitherVal, createIdentifierNode("either"));
+    addStatementToBlock(exampleBody, callPrintEitherVal);
+
+    // print("\n")
+    astNode *callPrintNl1 = createFuncCallNode("print");
+    Token strNl1 = {.type = TOKEN_STRING_LITERAL,
+                    .attribute.text.data = "\n",
+                    .attribute.text.length = 1};
+    addArgumentToCall(callPrintNl1, createLiteralNode(&strNl1));
+    addStatementToBlock(exampleBody, callPrintNl1);
+
+    // if safe then print("ready\n") else if enabled then print("blocked\n")
+    // else print("disabled\n")
+    astNode *elseIfElseBlock = createBlockNode();
+    astNode *callPrintDisabled = createFuncCallNode("print");
+    Token strDisabled = {.type = TOKEN_STRING_LITERAL,
+                         .attribute.text.data = "disabled\n",
+                         .attribute.text.length = 9};
+    addArgumentToCall(callPrintDisabled, createLiteralNode(&strDisabled));
+    addStatementToBlock(elseIfElseBlock, callPrintDisabled);
+
+    astNode *elseIfThenBlock = createBlockNode();
+    astNode *callPrintBlocked = createFuncCallNode("print");
+    Token strBlocked = {.type = TOKEN_STRING_LITERAL,
+                        .attribute.text.data = "blocked\n",
+                        .attribute.text.length = 8};
+    addArgumentToCall(callPrintBlocked, createLiteralNode(&strBlocked));
+    addStatementToBlock(elseIfThenBlock, callPrintBlocked);
+
+    astNode *innerStatusIf = createIfNode(createIdentifierNode("enabled"),
+                                          elseIfThenBlock, elseIfElseBlock);
+
+    astNode *outerStatusElseBlock = createBlockNode();
+    addStatementToBlock(outerStatusElseBlock, innerStatusIf);
+
+    astNode *outerStatusThenBlock = createBlockNode();
+    astNode *callPrintReady = createFuncCallNode("print");
+    Token strReady = {.type = TOKEN_STRING_LITERAL,
+                      .attribute.text.data = "ready\n",
+                      .attribute.text.length = 6};
+    addArgumentToCall(callPrintReady, createLiteralNode(&strReady));
+    addStatementToBlock(outerStatusThenBlock, callPrintReady);
+
+    astNode *statusIf =
+        createIfNode(createIdentifierNode("safe"), outerStatusThenBlock,
+                     outerStatusElseBlock);
+    addStatementToBlock(exampleBody, statusIf);
+
+    // if !enabled then print("input was false\n")
+    astNode *notEnabledThenBlock = createBlockNode();
+    astNode *callPrintInputFalse = createFuncCallNode("print");
+    Token strInputFalse = {.type = TOKEN_STRING_LITERAL,
+                           .attribute.text.data = "input was false\n",
+                           .attribute.text.length = 16};
+    addArgumentToCall(callPrintInputFalse, createLiteralNode(&strInputFalse));
+    addStatementToBlock(notEnabledThenBlock, callPrintInputFalse);
+
+    astNode *notEnabledIf =
+        createIfNode(createUnopNode(NOT, createIdentifierNode("enabled")),
+                     notEnabledThenBlock, NULL);
+    addStatementToBlock(exampleBody, notEnabledIf);
+
+    addFunctionToProgram(node, funNegate);
+    addFunctionToProgram(node, funExample);
 
     // prepare the symtable
+    symTableInit();
+    paramData paramNegate[1] = {{.id = "value", .dataType = BOOL}};
+    symTableInsertFun("negate", BOOL, 1, paramNegate);
+    symTableInsertFun("boolthenExample", UNIT, 0, NULL);
+    symTableInsertFun("print", UNIT, 0, NULL);
 
-    // generate the ast and output the result
+    codeGenState *state = codeGenInit();
+
+    // generate negate
+    symTableActivateFun("negate");
+    beginBlock();
+    codeGenBlock(state, negateBody, false);
+    endBlock();
+    codeGenFunction(state, funNegate);
+
+    // generate boolthenExample
+    symTableActivateFun("boolthenExample");
+    beginBlock();
+    symTableInsertVar("enabled", BOOL, true);
+    symTableInsertVar("divisor", INT, false);
+
+    // divThenBlock and divElseBlock
+    beginBlock();
+    codeGenBlock(state, divThenBlock, false);
+    endBlock();
+    beginBlock();
+    codeGenBlock(state, divElseBlock, false);
+    endBlock();
+
+    symTableInsertVar("safe", BOOL, true);
+    symTableInsertVar("inverted", BOOL, true);
+    symTableInsertVar("either", BOOL, true);
+
+    // statusIf blocks (inner and outer)
+    beginBlock();
+    codeGenBlock(state, elseIfThenBlock, false);
+    endBlock();
+    beginBlock();
+    codeGenBlock(state, elseIfElseBlock, false);
+    endBlock();
+    beginBlock();
+    codeGenBlock(state, outerStatusThenBlock, false);
+    endBlock();
+    beginBlock();
+    codeGenBlock(state, outerStatusElseBlock, false);
+    endBlock();
+
+    // notEnabledThenBlock
+    beginBlock();
+    codeGenBlock(state, notEnabledThenBlock, false);
+    endBlock();
+
+    codeGenBlock(state, exampleBody, false);
+    endBlock();
+
+    codeGenFunction(state, funExample);
+
+    codeGenOutCode(state);
 }
 
 void test5(astNode **root) {
@@ -353,8 +686,8 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    freeAst(root);
     symTableDestruct();
+    freeAst(root);
 
     return EXIT_SUCCESS;
 }

@@ -114,7 +114,7 @@ codeGenState *codeGenInit() {
 
         // res = concat(res, value[start])
         "GETCHAR GF@G1 LF@value LF@start\n"
-        "CONCAT LF@res LF@RES GF@G1\n"
+        "CONCAT LF@res LF@res GF@G1\n"
 
         // start += 1
         "ADD LF@start LF@start int@1\n"
@@ -255,20 +255,20 @@ int codeGenFunction(codeGenState *state, astNode *funRoot) {
     const char header[] = "LABEL %s\n"
                           "CREATEFRAME\n"
                           "PUSHFRAME\n";
-    const char singleParam[] = "DEFVAR LF@%s$0\n"
-                               "POPS LF@%s$0\n";
+    const char singleParam[] = "DEFVAR LF@%s$%lu\n"
+                               "POPS LF@%s$%lu\n";
     const char footer[] = "LABEL %s$return\n"
                           "POPFRAME\n"
                           "RETURN\n";
 
     // first get the size of the allocated chunk of memory
     // get the size of the function overhead
-    size_t totalLen = 0;
+    size_t totalLen = 1;
     totalLen += strlen(header) + strlen(footer) - 2 * 2 +
                 2 * strlen(funRoot->data.funcDef.name);
     for (size_t i = 0; i < funRoot->data.funcDef.paramCount; i++) {
-        totalLen += strlen(singleParam) - 2 * 2 +
-                    strlen(funRoot->data.funcDef.params[i].name);
+        totalLen += strlen(singleParam) - 2 * 2 - 2 * 3 +
+                    2 * strlen(funRoot->data.funcDef.params[i].name) + 2 * 10;
     }
     // get the size of the body
     totalLen += bodyBuffer->totalSize;
@@ -298,7 +298,8 @@ int codeGenFunction(codeGenState *state, astNode *funRoot) {
     // generate the parameter creation
     for (size_t i = 0; i < funRoot->data.funcDef.paramCount; i++) {
         const char *paramName = funRoot->data.funcDef.params[i].name;
-        pos += sprintf(&outBufData[pos], singleParam, paramName, paramName);
+        pos +=
+            sprintf(&outBufData[pos], singleParam, paramName, i, paramName, i);
     }
 
     // insert the body and remove the used buffer
@@ -670,6 +671,12 @@ int codeGenStmtIf(astNode *ifStmt, codeGenBufNode *buffer, codeGenState *state,
     char headerBuf[headerLen + 1];
     sprintf(headerBuf, header, labelId);
 
+    // generate the footer if there is no else block
+    const char footerNoElse[] = "LABEL %s_ELSE\n";
+    size_t footerNoElseLen = labelLen + strlen(footerNoElse);
+    char footerNoElseBuf[footerNoElseLen + 1];
+    sprintf(footerNoElseBuf, footerNoElse, labelId);
+
     // generate the middle
     const char middle[] = "JUMP %s_END\n"
                           "LABEL %s_ELSE\n";
@@ -694,13 +701,18 @@ int codeGenStmtIf(astNode *ifStmt, codeGenBufNode *buffer, codeGenState *state,
     IFJ_GEN_TRY(codeGenStatement(ifStmt->data.ifStmt.thenBlock, buffer,
                                  leaveVal, state),
                 -1);
-    IFJ_GEN_TRY(codeGenInsertTxt(middleBuf, buffer), -1);
 
-    // else block
-    IFJ_GEN_TRY(codeGenStatement(ifStmt->data.ifStmt.elseBlock, buffer,
-                                 leaveVal, state),
-                -1);
-    IFJ_GEN_TRY(codeGenInsertTxt(footerBuf, buffer), -1);
+    if (ifStmt->data.ifStmt.elseBlock != NULL) {
+        IFJ_GEN_TRY(codeGenInsertTxt(middleBuf, buffer), -1);
+        // else block if it exists
+        IFJ_GEN_TRY(codeGenStatement(ifStmt->data.ifStmt.elseBlock, buffer,
+                                     leaveVal, state),
+                    -1);
+        IFJ_GEN_TRY(codeGenInsertTxt(footerBuf, buffer), -1);
+    } else {
+        // output the footerNoElse
+        IFJ_GEN_TRY(codeGenInsertTxt(footerNoElseBuf, buffer), -1);
+    }
 
     return 0;
 }
@@ -903,7 +915,9 @@ int codeGenStmtReturn(astNode *ret, codeGenBufNode *buffer,
     // generate the RHS if the ptr to it isn't NULL, it will leave its result on
     // the stack
     if (ret->data.returnStmt.value) {
-        codeGenStatement(ret->data.returnStmt.value, buffer, true, state);
+        IFJ_GEN_TRY(
+            codeGenStatement(ret->data.returnStmt.value, buffer, true, state),
+            -1);
     }
 
     // jump to the end of the function for return
@@ -913,6 +927,8 @@ int codeGenStmtReturn(astNode *ret, codeGenBufNode *buffer,
     size_t outLen = strlen(out) + strlen(funName);
     char outBuf[outLen + 1];
     sprintf(outBuf, out, funName);
+
+    IFJ_GEN_TRY(codeGenInsertTxt(outBuf, buffer), -1);
 
     return 0;
 }
@@ -947,7 +963,7 @@ int codeGenStmtBinOp(astNode *binOp, codeGenBufNode *buffer,
         IFJ_GEN_TRY(codeGenInsertTxt("POPS GF@G1\n"
                                      "POPS GF@G2\n"
                                      "CONCAT GF@G2 GF@G2 GF@G1\n"
-                                     "PUSHS GF@G1\n",
+                                     "PUSHS GF@G2\n",
                                      buffer),
                     -1);
         break;
@@ -1040,8 +1056,8 @@ int codeGenStmtLiteral(astNode *lit, codeGenBufNode *buffer) {
         return codeGenStmtStringLit(lit->data.literal.attribute.text.data,
                                     lit->data.literal.attribute.text.length,
                                     buffer);
-    // TODO maybe unit literal uses a different enum element
-    case TOKEN_KW_UNIT:
+    case TOKEN_LPAREN:
+        // in ast unit is written as lparen
         // make buf an empty string
         buf[0] = '\0';
         break;
@@ -1192,16 +1208,16 @@ int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer,
             IFJ_GEN_TRY(codeGenInsertTxt("FLOAT2STRS\n", buffer), -1);
             break;
         case STRING:
-            return 0; // nothing needs to change, keep the value on stack
+            // nothing needs to change, keep the string on stack
+            break;
         case BOOL:
             // handle by call (the function will take only a boolean as
             // parameter)
             state->builtinNeeded[FUN_BOOLTOSTR] = true;
             return 1;
-            break;
         case UNIT:
             IFJ_GEN_TRY(codeGenInsertTxt("POPS GF@void\n"
-                                         "PUSHS srinng@()\n",
+                                         "PUSHS sring@()\n",
                                          buffer),
                         -1);
             break;

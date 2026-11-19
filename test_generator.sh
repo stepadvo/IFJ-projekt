@@ -1,8 +1,11 @@
 #!/bin/bash
 
-expectedOut=("put expected outputs here" "1" "tbd" "tbd" "tbd" "tbd" "iterative: 120
+expectedOut=("put expected outputs here" "1" "" "[2][4][5]
+result: 17" "safe: true
+either: true
+ready" "tbd" "iterative: 120
 recursive: 120")
-message=("put test message here" "Simple test" "" "" "" "Test from Control extension example" "Test from factorial example")
+message=("put test message here" "Simple test" "" "Test from funexp extension example" "Test from Boolthen extension example" "Test from Control extension example" "Test from factorial example")
 
 for i in {1..6}; do
     printf "\n"
@@ -19,7 +22,7 @@ for i in {1..6}; do
     else
         printf "Incorrect output"
         printf "expected:\n%s\n" "${expectedOut[$i]}"
-        printf "got:\n%s\n", "$res"
+        printf "got:\n%s\n" "$res"
     fi
 done
 
