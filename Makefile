@@ -22,7 +22,7 @@ TEST_EXPRESSION = test_expression
 TEST_STEMS = TEST_BST TEST_SYMTABLE TEST_AST TEST_LEXER TEST_TOKEN TEST_GEN TEST_SEM TEST_EXPRESSION # TEST_EXAMPLE ...
 
 #objects:
-OBJECTS = compiler.o parser.o ast.o lexer.o token.o symtable.o bst.o errcode.o ast_print.o expression.o
+OBJECTS = compiler.o parser.o ast.o lexer.o token.o symtable.o bst.o errcode.o expression.o internalSemantic.o semantics.o builtins.o collectFunctionHeaders.o generator.o
 #TEST_EXAMPLE_O = test_example.o src_example.o
 TEST_BST_O = bst.o test_bst.o errcode.o
 TEST_SYMTABLE_O = bst.o symtable.o test_symtable.o errcode.o

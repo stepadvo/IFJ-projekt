@@ -2,7 +2,7 @@
 #include "ast.h"
 #include "ast_print.h"
 #include "parser.h"
-#include "symtable.h"
+#include "semantics.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -11,7 +11,11 @@ int main(int argc, char *argv[]) {
     (void)argv;
     ERRCODE = 0;
 
+    // read the input and parse it into the ast
     astNode *root = parse();
+
+    // check the semantic correctness of the ast and generate it
+    semanticAnalyze(root);
 
 #ifdef DEBUG_AST
     printAst(root);
@@ -23,7 +27,6 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "\
 ==================================\n\
  Compilation ended unsuccessfully.\n\
-         output not valid         \n\
 ==================================\n\
 ");
     }
