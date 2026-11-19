@@ -15,9 +15,10 @@ TEST_AST = test_ast
 TEST_LEXER = test_lexer
 TEST_TOKEN = test_token
 TEST_GEN = test_gen
+TEST_SEM = test_semantics
 
 #add all test targets
-TEST_STEMS = TEST_BST TEST_SYMTABLE TEST_AST TEST_LEXER TEST_TOKEN TEST_GEN # TEST_EXAMPLE ...
+TEST_STEMS = TEST_BST TEST_SYMTABLE TEST_AST TEST_LEXER TEST_TOKEN TEST_GEN TEST_SEM # TEST_EXAMPLE ...
 
 #objects:
 OBJECTS = compiler.o parser.o ast.o lexer.o token.o symtable.o bst.o errcode.o ast_print.o expression.o
@@ -28,7 +29,8 @@ TEST_AST_O = ast.o test_ast.o
 TEST_LEXER_O = test_lexer.o lexer.o token.o errcode.o
 TEST_TOKEN_O = test_token.o token.o
 TEST_GEN_O = ast.o symtable.o bst.o generator.o test_generator.o errcode.o
-
+TEST_SEM_O = test_semantics.o internalSemantic.o semantics.o builtins.o collectFunctionHeaders.o \
+             ast.o symtable.o bst.o generator.o errcode.o token.o
 #rules:
 all: build
 
@@ -60,7 +62,7 @@ $($(1)): $($(1))_build
 	./$($(1)).out
 
 $($(1))_build: $($(1)_O)
-	$(CXX) -o $($(1)).out $($(1)_O) $(LDFLAGS)
+	$(CC) $(LDFLAGS) -o $($(1)).out $($(1)_O)
 endef
 
 $(foreach t,$(TEST_STEMS),$(eval $(call DEFINE_TEST_RULES,$(t))))
