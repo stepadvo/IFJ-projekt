@@ -411,6 +411,16 @@ int codeGenStmtBlock(astNode *block, codeGenBufNode *buffer,
                      codeGenState *state);
 
 /**
+ * @brief generates a convertion from int to double
+ *
+ * @param conv a non NULL ptr to the ast node
+ * @param buffer a non NULL ptr to the buffer
+ *
+ * @return 0 on success, -1 on failure (memory allocation err if not debugging)
+ */
+int codeGenStmtInt2Double(astNode *conv, codeGenBufNode *buffer, codeGenState *state);
+
+/**
  * @brief checks if the function called is a builtin function and genereates its
  * call
  *

@@ -566,6 +566,12 @@ int codeGenStatement(astNode *node, codeGenBufNode *buffer, bool leaveVal,
         IFJ_GEN_TRY(codeGenStmtBlock(node, buffer, state), -1);
         break;
 
+    case AST_INT2DOUBLE:
+        if (leaveVal) {
+            IFJ_GEN_TRY(codeGenStmtInt2Double(node, buffer, state), -1);
+        }
+
+
     default:
         GEN_CHECK_PRINT(false, -1,
                         "Unsupported ast node in tree (PROGRAMM or FUNC_DEF "
@@ -887,14 +893,6 @@ int codeGenStmtBinOp(astNode *binOp, codeGenBufNode *buffer,
     // int to float if nescessary)
     IFJ_GEN_TRY(codeGenStatement(binOp->data.binop.left, buffer, true, state),
                 -1);
-    if (binOp->data.binop.convertLeft) {
-        IFJ_GEN_TRY(codeGenInsertTxt("INT2FLOATS\n", buffer), -1);
-    }
-    IFJ_GEN_TRY(codeGenStatement(binOp->data.binop.right, buffer, true, state),
-                -1);
-    if (binOp->data.binop.convertLeft) {
-        IFJ_GEN_TRY(codeGenInsertTxt("INT2FLOATS\n", buffer), -1);
-    }
 
     // generate the operation
     switch (binOp->data.binop.op) {
@@ -1092,6 +1090,12 @@ int codeGenStmtBlock(astNode *block, codeGenBufNode *buffer,
                                       block->data.block.bufferPtr, block),
                 -1);
     return 0;
+}
+
+int codeGenStmtInt2Double(astNode *conv, codeGenBufNode *buffer, codeGenState *state) {
+        IFJ_GEN_TRY(codeGenStatement(conv->data.int2doubleConv.value, buffer, true, state), -1);
+        IFJ_GEN_TRY(codeGenInsertTxt("INT2FLOATS\n", buffer), -1);
+        return 0;
 }
 
 int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer,
