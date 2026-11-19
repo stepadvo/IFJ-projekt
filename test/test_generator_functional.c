@@ -649,57 +649,69 @@ void test6(astNode **root) {
     // prepare the ast
     node = createProgramNode();
 
-    Token liter2 = {.type=TOKEN_INT_LITERAL, .attribute.intValue=2};
-    Token liter3 = {.type=TOKEN_INT_LITERAL, .attribute.intValue=3};
-    Token literDouble1_5 = {.type=TOKEN_DOUBLE_LITERAL, .attribute.doubleValue=1.5};
-    Token literBoolTrue = {.type=TOKEN_BOOL_LITERAL, .attribute.boolValue=true};
+    Token liter2 = {.type = TOKEN_INT_LITERAL, .attribute.intValue = 2};
+    Token liter3 = {.type = TOKEN_INT_LITERAL, .attribute.intValue = 3};
+    Token literDouble1_5 = {.type = TOKEN_DOUBLE_LITERAL,
+                            .attribute.doubleValue = 1.5};
+    Token literBoolTrue = {.type = TOKEN_BOOL_LITERAL,
+                           .attribute.boolValue = true};
 
     // prepare function: combineValues(a: Int, b: Double, flag: Boolean): Double
     astNode *combineBody = createBlockNode();
-    astFuncParam paramsCombine[3] = {
-        {.name="a", .type=INT},
-        {.name="b", .type=DOUBLE},
-        {.name="flag", .type=BOOL}
-    };
-    astNode *funCombine = createFuncDefNode("combineValues", false, paramsCombine, 3, combineBody);
+    astFuncParam paramsCombine[3] = {{.name = "a", .type = INT},
+                                     {.name = "b", .type = DOUBLE},
+                                     {.name = "flag", .type = BOOL}};
+    astNode *funCombine = createFuncDefNode("combineValues", false,
+                                            paramsCombine, 3, combineBody);
     funCombine->data.funcDef.explicitReturnType = DOUBLE;
 
     // val label = "values:"
-    Token strLabel = {.type=TOKEN_STRING_LITERAL, .attribute.text.data="values:", .attribute.text.length=7};
-    addStatementToBlock(combineBody, createVarDefNode("label", true, STRING, createLiteralNode(&strLabel)));
+    Token strLabel = {.type = TOKEN_STRING_LITERAL,
+                      .attribute.text.data = "values:",
+                      .attribute.text.length = 7};
+    addStatementToBlock(
+        combineBody,
+        createVarDefNode("label", true, STRING, createLiteralNode(&strLabel)));
 
     // val strLabel = toStr(label)  [STRING]
     astNode *callToStrLabel = createFuncCallNode("toStr");
     callToStrLabel->data.funcCall.argIfAny = STRING;
     addArgumentToCall(callToStrLabel, createIdentifierNode("label"));
-    addStatementToBlock(combineBody, createVarDefNode("strLabel", true, STRING, callToStrLabel));
+    addStatementToBlock(combineBody, createVarDefNode("strLabel", true, STRING,
+                                                      callToStrLabel));
 
     // val strFlag = toStr(flag)  [BOOLEAN]
     astNode *callToStrFlag = createFuncCallNode("toStr");
     callToStrFlag->data.funcCall.argIfAny = BOOL;
     addArgumentToCall(callToStrFlag, createIdentifierNode("flag"));
-    addStatementToBlock(combineBody, createVarDefNode("strFlag", true, STRING, callToStrFlag));
+    addStatementToBlock(
+        combineBody, createVarDefNode("strFlag", true, STRING, callToStrFlag));
 
     // val strUnit = toStr(())  [UNIT]
     astNode *callToStrUnit = createFuncCallNode("toStr");
     callToStrUnit->data.funcCall.argIfAny = UNIT;
     addArgumentToCall(callToStrUnit, createUnitNode());
-    addStatementToBlock(combineBody, createVarDefNode("strUnit", true, STRING, callToStrUnit));
+    addStatementToBlock(
+        combineBody, createVarDefNode("strUnit", true, STRING, callToStrUnit));
 
     // val strDouble = toStr(b)  [DOUBLE]
     astNode *callToStrDouble = createFuncCallNode("toStr");
     callToStrDouble->data.funcCall.argIfAny = DOUBLE;
     addArgumentToCall(callToStrDouble, createIdentifierNode("b"));
-    addStatementToBlock(combineBody, createVarDefNode("strDouble", true, STRING, callToStrDouble));
+    addStatementToBlock(combineBody, createVarDefNode("strDouble", true, STRING,
+                                                      callToStrDouble));
 
-    // print(strLabel); print(" "); print(strFlag); print(" "); print(strUnit); print(" "); print(strDouble); print("\n")
+    // print(strLabel); print(" "); print(strFlag); print(" "); print(strUnit);
+    // print(" "); print(strDouble); print("\n")
     astNode *callPrint1 = createFuncCallNode("print");
     callPrint1->data.funcCall.argIfAny = STRING;
     addArgumentToCall(callPrint1, createIdentifierNode("strLabel"));
     addStatementToBlock(combineBody, callPrint1);
 
     astNode *callPrintSp1 = createFuncCallNode("print");
-    Token strSp1 = {.type=TOKEN_STRING_LITERAL, .attribute.text.data=" ", .attribute.text.length=1};
+    Token strSp1 = {.type = TOKEN_STRING_LITERAL,
+                    .attribute.text.data = " ",
+                    .attribute.text.length = 1};
     callPrintSp1->data.funcCall.argIfAny = STRING;
     addArgumentToCall(callPrintSp1, createLiteralNode(&strSp1));
     addStatementToBlock(combineBody, callPrintSp1);
@@ -710,7 +722,9 @@ void test6(astNode **root) {
     addStatementToBlock(combineBody, callPrint2);
 
     astNode *callPrintSp2 = createFuncCallNode("print");
-    Token strSp2 = {.type=TOKEN_STRING_LITERAL, .attribute.text.data=" ", .attribute.text.length=1};
+    Token strSp2 = {.type = TOKEN_STRING_LITERAL,
+                    .attribute.text.data = " ",
+                    .attribute.text.length = 1};
     callPrintSp2->data.funcCall.argIfAny = STRING;
     addArgumentToCall(callPrintSp2, createLiteralNode(&strSp2));
     addStatementToBlock(combineBody, callPrintSp2);
@@ -721,7 +735,9 @@ void test6(astNode **root) {
     addStatementToBlock(combineBody, callPrint3);
 
     astNode *callPrintSp3 = createFuncCallNode("print");
-    Token strSp3 = {.type=TOKEN_STRING_LITERAL, .attribute.text.data=" ", .attribute.text.length=1};
+    Token strSp3 = {.type = TOKEN_STRING_LITERAL,
+                    .attribute.text.data = " ",
+                    .attribute.text.length = 1};
     callPrintSp3->data.funcCall.argIfAny = STRING;
     addArgumentToCall(callPrintSp3, createLiteralNode(&strSp3));
     addStatementToBlock(combineBody, callPrintSp3);
@@ -732,41 +748,41 @@ void test6(astNode **root) {
     addStatementToBlock(combineBody, callPrint4);
 
     astNode *callPrintNlCombine = createFuncCallNode("print");
-    Token strNlCombine = {.type=TOKEN_STRING_LITERAL, .attribute.text.data="\n", .attribute.text.length=1};
+    Token strNlCombine = {.type = TOKEN_STRING_LITERAL,
+                          .attribute.text.data = "\n",
+                          .attribute.text.length = 1};
     callPrintNlCombine->data.funcCall.argIfAny = STRING;
     addArgumentToCall(callPrintNlCombine, createLiteralNode(&strNlCombine));
     addStatementToBlock(combineBody, callPrintNlCombine);
 
     // val base = a * 2
-    addStatementToBlock(combineBody, createVarDefNode(
-        "base",
-        true,
-        INT,
-        createBinopNode(MULTIPLY, createIdentifierNode("a"), createLiteralNode(&liter2))
-    ));
+    addStatementToBlock(
+        combineBody,
+        createVarDefNode("base", true, INT,
+                         createBinopNode(MULTIPLY, createIdentifierNode("a"),
+                                         createLiteralNode(&liter2))));
 
     // val convBase = base.toDouble
-    addStatementToBlock(combineBody, createVarDefNode(
-        "convBase",
-        true,
-        DOUBLE,
-        createInt2DoubleNode(createIdentifierNode("base"))
-    ));
+    addStatementToBlock(
+        combineBody,
+        createVarDefNode("convBase", true, DOUBLE,
+                         createInt2DoubleNode(createIdentifierNode("base"))));
 
     // val total = convBase + b
-    addStatementToBlock(combineBody, createVarDefNode(
-        "total",
-        true,
-        DOUBLE,
-        createBinopNode(PLUS, createIdentifierNode("convBase"), createIdentifierNode("b"))
-    ));
+    addStatementToBlock(
+        combineBody,
+        createVarDefNode("total", true, DOUBLE,
+                         createBinopNode(PLUS, createIdentifierNode("convBase"),
+                                         createIdentifierNode("b"))));
 
     // return total
-    addStatementToBlock(combineBody, createReturnNode(createIdentifierNode("total")));
+    addStatementToBlock(combineBody,
+                        createReturnNode(createIdentifierNode("total")));
 
     // prepare main function: multiParamExample(): Unit
     astNode *mainBody = createBlockNode();
-    astNode *funMain = createFuncDefNode("multiParamExample", true, NULL, 0, mainBody);
+    astNode *funMain =
+        createFuncDefNode("multiParamExample", true, NULL, 0, mainBody);
     funMain->data.funcDef.explicitReturnType = UNIT;
 
     // val res = combineValues(3, 1.5, true)
@@ -774,11 +790,14 @@ void test6(astNode **root) {
     addArgumentToCall(callCombine, createLiteralNode(&liter3));
     addArgumentToCall(callCombine, createLiteralNode(&literDouble1_5));
     addArgumentToCall(callCombine, createLiteralNode(&literBoolTrue));
-    addStatementToBlock(mainBody, createVarDefNode("res", true, DOUBLE, callCombine));
+    addStatementToBlock(mainBody,
+                        createVarDefNode("res", true, DOUBLE, callCombine));
 
     // print("unit_print: ")
     astNode *callPrintUnitLbl = createFuncCallNode("print");
-    Token strUnitLbl = {.type=TOKEN_STRING_LITERAL, .attribute.text.data="unit_print: ", .attribute.text.length=12};
+    Token strUnitLbl = {.type = TOKEN_STRING_LITERAL,
+                        .attribute.text.data = "unit_print: ",
+                        .attribute.text.length = 12};
     callPrintUnitLbl->data.funcCall.argIfAny = STRING;
     addArgumentToCall(callPrintUnitLbl, createLiteralNode(&strUnitLbl));
     addStatementToBlock(mainBody, callPrintUnitLbl);
@@ -791,7 +810,9 @@ void test6(astNode **root) {
 
     // print("\nres: ")
     astNode *callPrintResLbl = createFuncCallNode("print");
-    Token strResLbl = {.type=TOKEN_STRING_LITERAL, .attribute.text.data="\nres: ", .attribute.text.length=6};
+    Token strResLbl = {.type = TOKEN_STRING_LITERAL,
+                       .attribute.text.data = "\nres: ",
+                       .attribute.text.length = 6};
     callPrintResLbl->data.funcCall.argIfAny = STRING;
     addArgumentToCall(callPrintResLbl, createLiteralNode(&strResLbl));
     addStatementToBlock(mainBody, callPrintResLbl);
@@ -808,7 +829,9 @@ void test6(astNode **root) {
 
     // print("\n")
     astNode *callPrintNlMain = createFuncCallNode("print");
-    Token strNlMain = {.type=TOKEN_STRING_LITERAL, .attribute.text.data="\n", .attribute.text.length=1};
+    Token strNlMain = {.type = TOKEN_STRING_LITERAL,
+                       .attribute.text.data = "\n",
+                       .attribute.text.length = 1};
     callPrintNlMain->data.funcCall.argIfAny = STRING;
     addArgumentToCall(callPrintNlMain, createLiteralNode(&strNlMain));
     addStatementToBlock(mainBody, callPrintNlMain);
@@ -818,11 +841,9 @@ void test6(astNode **root) {
 
     // prepare the symtable
     symTableInit();
-    paramData paramsCombineSym[3] = {
-        {.id = "a", .dataType = INT},
-        {.id = "b", .dataType = DOUBLE},
-        {.id = "flag", .dataType = BOOL}
-    };
+    paramData paramsCombineSym[3] = {{.id = "a", .dataType = INT},
+                                     {.id = "b", .dataType = DOUBLE},
+                                     {.id = "flag", .dataType = BOOL}};
     symTableInsertFun("combineValues", DOUBLE, 3, paramsCombineSym);
     symTableInsertFun("multiParamExample", UNIT, 0, NULL);
     paramData paramPrint[1] = {{.id = "n", .dataType = INT}};
