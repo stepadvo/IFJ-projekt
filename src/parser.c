@@ -759,7 +759,8 @@ static astNode *parseReturn(ExpressionStops stops) {
     /** return without a value is allowed for Unit functions */
     if (currentToken.type == TOKEN_NEWLINE ||
         currentToken.type == TOKEN_SEMICOLON ||
-        currentToken.type == TOKEN_EOF) {
+        currentToken.type == TOKEN_EOF ||
+        (stops.stopAtElse && currentToken.type == TOKEN_KW_ELSE)) {
         return createReturnNode(NULL);
     }
     astNode *value = parseExpressionWithStops(stops);
@@ -1021,7 +1022,8 @@ static astNode *parseFor(size_t indent, ExpressionStops stops) {
             freeAst(forNode);
             return NULL;
         }
-        astNode *guard = parseExpression();
+        ExpressionStops guardStops = {.stopAtGuard = true};
+        astNode *guard = parseExpressionWithStops(guardStops);
         if (guard == NULL) {
             freeAst(forNode);
             return NULL;
