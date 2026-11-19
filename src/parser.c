@@ -1283,7 +1283,7 @@ static astNode *parseFunctionDef(bool isMain) {
         return NULL;
     }
 
-    /** newline -> block, otherwise a single expression */
+    /** parse a block or a single expression as the function body */
     bool isBlock = currentToken.type == TOKEN_NEWLINE;
     astNode *body = NULL;
     if (isBlock) {
@@ -1314,6 +1314,19 @@ static astNode *parseFunctionDef(bool isMain) {
             free(name);
             return NULL;
         }
+    }
+
+    /** wrap single-line expressions in a block */
+    if (!isBlock) {
+        astNode *block = createBlockNode();
+        if (addStatementToBlock(block, body) != 0) {
+            freeAst(block);
+            freeAst(body);
+            freeParameters(params, paramCount);
+            free(name);
+            return NULL;
+        }
+        body = block;
     }
 
     /** build function AST */
