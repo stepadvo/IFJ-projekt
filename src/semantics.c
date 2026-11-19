@@ -1,76 +1,32 @@
-/** 
+/**
  * @file semantic.c
  * @brief Interface of the semantic analysis of the IFJ26 AST
  * @author Kristian Havranek, xhravrak00
  *
  * Project IFJ26 compiler
-*/
-#include <stdio.h>
-#include <stdlib.h>
+ */
 #include "semantics.h"
 #include "ast.h"
-#include "symtable.h"
 #include "builtins.h"
 #include "collectFunctionHeaders.h"
+#include "generator.h"
+#include "internalSemantic.h"
+#include "symtable.h"
+#include <stdio.h>
+#include <stdlib.h>
 
-typedef struct {
-    astNode *currentFunc;
-} SemCtx;
+codeGenState *state = NULL;
 
-static void semError(int code, const char *msg)
-{
+void semError(int code, const char *msg) {
     fprintf(stderr, "Semantic error (%d): %s\n", code, msg);
     exit(code);
 }
-static void analyzeFunction(SemCtx *ctx, astNode *func);
-static void analyzeBlock(SemCtx *ctx, astNode *block);
-static void analyzeStatement(SemCtx *ctx, astNode *stmt);
-static varType analyzeExpr(SemCtx *ctx, astNode *expr);
 
-static void registerBuiltins(SemCtx *ctx);
-static  void collectFunctionHeaders(SemCtx *ctx, astNode *root);
-/** @brief analyze one function def */
-static void analyzeFunction(SemCtx *ctx, astNode *func)
-{
+int semanticAnalyze(astNode *root) {
 
-    ctx->currentFunc = func;
-    // TODO
-    ctx->currentFunc = NULL;
-    
-}
-
-/** @brief analyzes all statements of a block */
-static void analyzeBlock(SemCtx *ctx, astNode *block)
-{
-
-    (void)ctx;
-    (void)block; // TODO
-
-}
-
-/** @brief analyzes statement */
-static void analyzeStatement(SemCtx *ctx, astNode *stmt)
-{
-
-    (void)ctx;
-    (void)stmt; // TODO
-
-}
-
-/** @brief analyzes expression and returns its type*/
-static varType analyzeExpr(SemCtx *ctx, astNode *expr)
-{
-
-    (void)ctx;
-    (void)expr; // TODO
-    return UNKNOWN;
-
-}
-
-int semanticAnalyze(astNode *root)
-{
-
-    SemCtx ctx = {0};
+    if (root == NULL) {
+        return 0;
+    }
 
     if (symTableInit() != 0) {
         semError(99, "cannot allocate symbol table");
@@ -79,13 +35,26 @@ int semanticAnalyze(astNode *root)
     if (builtinsRegister() != 0) {
         semError(99, "cannot register built-in functions");
     }
+    state = codeGenInit();
+    if (state == NULL) {
+        semError(99, "cannot initialize code generator");
+    }
     collectFunctionHeaders(root);
-    
-    for (size_t i = 0; i < root->data.program.count; i++)
-    {
+
+    SemCtx ctx = {.currentFunc = NULL};
+
+    for (size_t i = 0; i < root->data.program.count; i++) {
         analyzeFunction(&ctx, root->data.program.functions[i]);
+        if (ERRCODE != 0) {
+            codeGenDestruct(state);
+            return ERRCODE;
+        }
+    }
+    if (ERRCODE == 0) {
+        codeGenOutCode(state);
     }
 
-    return 0;
+    codeGenDestruct(state);
+    state = NULL;
+    return ERRCODE;
 }
-

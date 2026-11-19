@@ -9,10 +9,8 @@
 #include "collectFunctionHeaders.h"
 #include "ast.h"
 #include "compiler.h"
-#include "semantics"
+#include "semantics.h"
 #include "symtable.h"
-#include <stdbool.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -31,7 +29,7 @@ static bool hasDuplicateParams(const astFuncParam *params, size_t count) {
 static paramData *buildParamData(const astFuncParam *params, size_t count) {
     paramData *paramList = malloc(count * sizeof(paramData));
     if (!paramList) {
-        return NULL; // alloc failed
+        return NULL;
     }
 
     for (size_t i = 0; i < count; i++) {
@@ -53,57 +51,73 @@ static void checkMain(const astNode *root) {
         }
     }
 
-    if (mainCount == 0)
+    if (mainCount == 0) {
+        setErrCode(3);
         semError(3, "@main not found");
-    setErrCode(3);
-    if (mainCount > 1)
+        return;
+    }
+    if (mainCount > 1) {
+        setErrCode(4);
         semError(4, "multiple @mains found");
-    setErrCode(4);
-    if (mainFunc->data.funcDef.paramCount != 0)
+        return;
+    }
+
+    if (mainFunc->data.funcDef.paramCount != 0) {
+        setErrCode(5);
         semError(5, "@main has a parameter");
-    setErrCode(5);
+    }
+
     if (mainFunc->data.funcDef.explicitReturnType != UNKNOWN &&
-        mainFunc->data.funcDef.explicitReturnType != UNIT)
-        semError(6, "");
-    setErrCode(6);
+        mainFunc->data.funcDef.explicitReturnType != UNIT) {
+        setErrCode(6);
+        semError(6, "@main has invalid return type");
+    }
 }
 /** @brief collects all function headers */
 void collectFunctionHeaders(astNode *root) {
-    if (root == NULL)
-        semError(99, "");
-    setErrCode(99);
-    const astNode *func;
-    const size_t *paramCount;
-    paramData *params;
+    if (root == NULL) {
+        setErrCode(99);
+        semError(99, "AST root is NULL");
+        return;
+    }
     for (size_t i = 0; i < root->data.program.count; i++) {
-        func = root->data.program.functions[i];
-        paramCount = func->data.funcDef.paramCount;
+        const astNode *func = root->data.program.functions[i];
+        if (func == NULL) {
+            setErrCode(99);
+            semError(99, "NULL function node in AST");
+            return;
+        }
 
-        if (hasDuplicateParams(func->data.funcDef.params, paramCount))
-            semError(4, "duplicate main");
-        setErrCode(4);
+        const size_t paramCount = func->data.funcDef.paramCount;
 
-        params = NULL;
+        if (hasDuplicateParams(func->data.funcDef.params, paramCount)) {
+            setErrCode(4);
+            semError(4, "duplicate func params");
+        }
+        paramData *params = NULL;
+
         if (paramCount > 0) {
             params = buildParamData(func->data.funcDef.params, paramCount);
-            if (params == NULL)
-                semError(99, "");
-            setErrCode(99);
+            if (params == NULL) {
+                setErrCode(99);
+                semError(99, "failed to allocate parameter list");
+                return;
+            }
         }
-    }
-    int result = symTableInsertFunctionHeaders(
-        func->data.funcDef.name, func->data.funcDef.explicitReturnType,
-        (int)paramCount, params);
 
-    free(params);
+        int result = symTableInsertFun(func->data.funcDef.name,
+                                       func->data.funcDef.explicitReturnType,
+                                       (int)paramCount, params);
 
-    if (result == 1) {
-        semError(4, "");
-        setErrCode(4);
-    }
-    if (result != 0) {
-        semError(99, "");
-        setErrCode(99);
+        free(params);
+
+        if (result == 1) {
+            setErrCode(4);
+            semError(4, "function redefinition");
+        } else if (result != 0) {
+            setErrCode(99);
+            semError(99, "symtable instert function failed");
+        }
     }
 
     checkMain(root);
