@@ -15,7 +15,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define IFJ_GEN_DEBUG
 /** a macro for checking if the requirements set for codeGenBlock and codeGenFun
  * to work are met */
 #ifdef IFJ_GEN_DEBUG
@@ -33,7 +32,7 @@
         if (!(cond))                                                           \
         return retFail
 #else
-    #define GEN_CHECK(cond, str, ...) (void)0
+    #define GEN_CHECK_PRINT(cond, str, ...) (void)0
     #define GEN_CHECK(cond, retFail) (void)0
 #endif
 
@@ -45,8 +44,9 @@
 
 codeGenState *codeGenInit() {
     // the text for builtin functions
-    static char builtinCode[] =
-        "LABEL ord\n"  // function ord(value:String, index:Int)->Int and
+    // function ord(value:String, index:Int)->Int
+    static char ordBuiltin[] =
+        "LABEL ord\n"
         "POPS GF@G1\n" // GF@G1 = value
         "POPS GF@G2\n" // GF@G2 = index
 
@@ -68,9 +68,10 @@ codeGenState *codeGenInit() {
         // on fail push -1 to stack
         "LABEL ord$fail\n"
         "PUSHS INT@-1\n"
-        "RETURN\n"
+        "RETURN\n\n";
 
-        // function subStr(value:String, start:Int, end:Int)->String
+    // function subStr(value:String, start:Int, end:Int)->String
+    static char subStrBuiltin[] =
         "LABEL subStr\n"
         // initialize the function frame
         "CREATEFRAME\n"
@@ -124,22 +125,23 @@ codeGenState *codeGenInit() {
         "POPFRAME\n"
         "RETURN\n"
         "LABEL subStr$FAIL\n"
-        "EXIT int@40\n"
+        "EXIT int@40\n\n";
 
-        // function readInt() -> Int
-        "LABEL readInt\n"
-        "READ GF@G1 int\n"
-        "TYPE GF@G2 GF@G1\n"
-        "JUMPIFNEQ readInt$nil GF@G1 string@nil\n"
-        // if the result of READ isn't nil
-        "PUSHS GF@G1\n"
-        "RETURN\n"
-        "LABEL readInt$nil\n"
-        // if the result or READ is nil
-        "PUSHS int@0\n"
-        "RETURN\n"
+    // function readInt() -> Int
+    static char readIntBuiltin[] = "LABEL readInt\n"
+                                   "READ GF@G1 int\n"
+                                   "TYPE GF@G2 GF@G1\n"
+                                   "JUMPIFNEQ readInt$nil GF@G1 string@nil\n"
+                                   // if the result of READ isn't nil
+                                   "PUSHS GF@G1\n"
+                                   "RETURN\n"
+                                   "LABEL readInt$nil\n"
+                                   // if the result or READ is nil
+                                   "PUSHS int@0\n"
+                                   "RETURN\n\n";
 
-        // function readDouble() -> Double
+    // function readDouble() -> Double
+    static char readDoubleBuiltin[] =
         "LABEL readDouble\n"
         "READ GF@G1 float\n"
         "TYPE GF@G2 GF@G1\n"
@@ -150,42 +152,49 @@ codeGenState *codeGenInit() {
         "LABEL readDouble$nil\n"
         // if the result or READ is nil
         "PUSHS int@0\n"
-        "RETURN\n"
+        "RETURN\n\n";
 
-        // function toStr(Any) -> String variant toStr(Bool) -> String
-        // this fucntion is the variant, where the parameter can only be bool
-        // other variants are handeled by inserting the instructions inline
-        "LABEL toStr\n"
-        "PUSHS bool@true\n"
-        "JUMPIFNEQS toStr$false\n"
-        "PUSHS string@true\n"
-        "RETURN\n"
-        "LABEL toStr$false\n"
-        "PUSHS string@false\n"
-        "RETURN\n";
+    // function toStr(Any) -> String variant toStr(Bool) -> String
+    // this fucntion is the variant, where the parameter can only be bool
+    // other variants are handeled by inserting the instructions inline
+    static char toStrBuiltin[] = "LABEL toStr\n"
+                                 "PUSHS bool@true\n"
+                                 "JUMPIFNEQS toStr$false\n"
+                                 "PUSHS string@true\n"
+                                 "RETURN\n"
+                                 "LABEL toStr$false\n"
+                                 "PUSHS string@false\n"
+                                 "RETURN\n\n";
 
     static codeGenState state = {.firstBuf = NULL,
                                  .lastBuf = NULL,
-                                 .bufsCreated = 0,
                                  .firstFun = NULL,
                                  .lastFun = NULL,
                                  .mainFunName = "",
-                                 .builtinFuns = builtinCode};
+                                 .builtinNeeded = {false}};
+
+    state.builtinFuns[FUN_ORD] = ordBuiltin;
+    state.builtinFuns[FUN_SUBSTR] = subStrBuiltin;
+    state.builtinFuns[FUN_READINT] = readIntBuiltin;
+    state.builtinFuns[FUN_READDOUBLE] = readDoubleBuiltin;
+    state.builtinFuns[FUN_BOOLTOSTR] = toStrBuiltin;
     return &state;
 }
 
 void codeGenDestruct(codeGenState *state) {
     codeGenBufNode *next;
-    for (codeGenBufNode *curr = state->firstBuf; curr != NULL; curr = next) {
+    codeGenBufNode *curr = state->firstBuf;
+    while (curr) {
         next = curr->nextBuf;
         codeGenDestructBuf(curr);
+        curr = next;
     }
     state->firstBuf = state->lastBuf = NULL;
 
     codeGenDiscard(state);
 }
 
-int codeGenBlock(codeGenState *state, astNode *blockRoot) {
+int codeGenBlock(codeGenState *state, astNode *blockRoot, bool leaveVal) {
     if (!state || !blockRoot) {
         return 1;
     }
@@ -193,15 +202,37 @@ int codeGenBlock(codeGenState *state, astNode *blockRoot) {
                     "The node must be a block. Type is %i", blockRoot->type);
 
     // create a new buffer for generating
-    codeGenBufNode *buffer = codeGenCreateBuf(state);
+    codeGenBufNode *buffer = codeGenCreateAndInsertBuf(state);
     if (!buffer) {
         return -1;
     }
+    buffer->leftVal = leaveVal;
 
     // generate all the statements in the block into the created buffer
     IFJ_GEN_TRY(codeGenStatementArr(blockRoot->data.block.statements,
-                                    blockRoot->data.block.count, buffer),
+                                    blockRoot->data.block.count, buffer, state,
+                                    leaveVal),
                 -1);
+
+#ifdef IFJ_GEN_DEBUG
+    // if we expect value, check that the last statement generated it
+    if (leaveVal) {
+        const char *buf = buffer->lastSection->data;
+        int i = buffer->lastSection->size -
+                2; // set to last index before last newline
+        while (buf[i] != '\n') {
+            i--;
+        }
+        // check that the last instruction left value on stack
+        /*
+        GEN_CHECK_PRINT(
+            buf[i + 1] == 'P' && buf[i + 2] == 'U' && buf[i + 3] == 'S' &&
+                buf[i + 4] == 'H' && buf[i + 5] == 'S',
+            -1,
+            "block expected to leave value but its last statement left none\n");
+        */
+    }
+#endif
 
     // set the ptr to the created generated buffer in ast
     blockRoot->data.block.bufferPtr = (void *)buffer;
@@ -209,7 +240,7 @@ int codeGenBlock(codeGenState *state, astNode *blockRoot) {
 }
 
 int codeGenFunction(codeGenState *state, astNode *funRoot) {
-    if (!funRoot) {
+    if (!funRoot || !state) {
         return 1;
     }
 
@@ -224,8 +255,8 @@ int codeGenFunction(codeGenState *state, astNode *funRoot) {
     const char header[] = "LABEL %s\n"
                           "CREATEFRAME\n"
                           "PUSHFRAME\n";
-    const char singleParam[] = "DEFVAR %s$0\n"
-                               "POPS %s$0\n";
+    const char singleParam[] = "DEFVAR LF@%s$0\n"
+                               "POPS LF@%s$0\n";
     const char footer[] = "LABEL %s$return\n"
                           "POPFRAME\n"
                           "RETURN\n";
@@ -240,7 +271,7 @@ int codeGenFunction(codeGenState *state, astNode *funRoot) {
                     strlen(funRoot->data.funcDef.params[i].name);
     }
     // get the size of the body
-    totalLen += codeGenBufLenght(bodyBuffer);
+    totalLen += bodyBuffer->totalSize;
 
     // allocate a chunk of memory for the whole function and its output buffer
     outBufNode *outBuf = malloc(sizeof(outBufNode));
@@ -270,7 +301,7 @@ int codeGenFunction(codeGenState *state, astNode *funRoot) {
         pos += sprintf(&outBufData[pos], singleParam, paramName, paramName);
     }
 
-    // insert the body
+    // insert the body and remove the used buffer
     pos += codeGenOutputBuf(&outBufData[pos], bodyBuffer);
 
     // generate the footer
@@ -279,32 +310,49 @@ int codeGenFunction(codeGenState *state, astNode *funRoot) {
     // insert the outBuf into the state
     if (state->lastFun) {
         state->lastFun->nextBuf = outBuf;
+    } else {
+        state->firstFun = outBuf;
     }
     state->lastFun = outBuf;
+
+    // set the function in the ast as generated
+    funRoot->data.funcDef.alreadyGenerated = true;
 
     return 0;
 }
 
 int codeGenOutCode(codeGenState *state) {
-    // output the file header (including the builtin functions at the end)
+    // output the file header
     int len = printf(".IFJcode26\n"
                      "DEFVAR GF@void\n"
                      "DEFVAR GF@G1\n"
                      "DEFVAR GF@G2\n"
                      "DEFVAR GF@G3\n"
                      "CALL %s\n"
-                     "EXIT int@0\n%s",
-                     state->mainFunName, state->builtinFuns);
+                     "EXIT int@0\n\n",
+                     state->mainFunName);
+
+    // output the needed builtin functions
+    for (int i = 0; i < FUN_NUM; i++) {
+        if (state->builtinNeeded[i] == true) {
+            puts(state->builtinFuns[i]);
+            len += strlen(state->builtinFuns[i]);
+        }
+    }
 
     // output all the functoins
     outBufNode *next;
-    for (outBufNode *curr = state->firstFun; curr != NULL; curr = next) {
+    outBufNode *curr = state->firstFun;
+    while (curr) {
         puts(curr->buf); // output the whole buffer to stdout
 
         len += curr->bufSize;
         next = curr->nextBuf;
 
-        free(curr); // free the buffers as we go
+        free(curr->buf); // free the buffers as we go
+        free(curr);
+
+        curr = next;
     }
     state->firstFun = state->lastFun = NULL;
 
@@ -313,11 +361,15 @@ int codeGenOutCode(codeGenState *state) {
 
 void codeGenDiscard(codeGenState *state) {
     outBufNode *next;
+    outBufNode *curr = state->firstFun;
 
-    for (outBufNode *curr = state->firstFun; curr != NULL; curr = next) {
+    while (curr) {
         next = curr->nextBuf;
 
-        free(curr); // free the buffers as we go
+        free(curr->buf); // free the buffers as we go
+        free(curr);
+
+        curr = next;
     }
     state->firstFun = state->lastFun = NULL;
 
@@ -331,80 +383,71 @@ void codeGenDiscard(codeGenState *state) {
  * --------------------
  */
 
-codeGenBufNode *codeGenCreateBuf(codeGenState *state) {
+codeGenBufNode *codeGenCreateAndInsertBuf(codeGenState *state) {
     codeGenBufNode *tempBufP = malloc(sizeof(codeGenBufNode));
     if (!tempBufP) {
         setErrCode(99);
         return NULL;
     }
-    bufInsertNode *tempNodeP = malloc(sizeof(bufInsertNode));
-    if (!tempNodeP) {
-        goto err_node;
-    }
 
     bufSection *tempSectionP = malloc(sizeof(bufSection));
     if (!tempSectionP) {
-        goto err_area;
+        free(tempBufP);
+        setErrCode(99);
+        return NULL;
     }
 
     // initialize the buffer
-    codeGenBufNode buf = {.firstNode = tempNodeP,
-                          .lastNode = tempNodeP,
-                          .firstSection = tempSectionP,
+    codeGenBufNode buf = {.firstSection = tempSectionP,
                           .lastSection = tempSectionP,
                           .totalSize = 0,
                           .labelNum = 0,
                           .nextBuf = NULL,
-                          .bufNum = state->bufsCreated++};
+                          .prevBuf = state->lastBuf};
     memcpy(tempBufP, &buf, sizeof(codeGenBufNode));
 
-    return tempBufP;
+    // insert the buffer at the end
+    if (state->lastBuf) {
+        state->lastBuf->nextBuf = tempBufP;
+    } else {
+        state->firstBuf = tempBufP;
+    }
+    state->lastBuf = tempBufP;
 
-err_area:
-    free(tempNodeP);
-err_node:
-    free(tempBufP);
-    setErrCode(99);
-    return NULL;
+    return tempBufP;
 }
 
 void codeGenDestructBuf(codeGenBufNode *buffer) {
     if (!buffer) {
         return;
     }
-    // free all the metadata
-    bufInsertNode *nextNode;
-    for (bufInsertNode *curr = buffer->firstNode; curr != NULL;
-         curr = nextNode) {
-        nextNode = curr->next;
-        free(curr);
-    }
 
     // free all the text areas
     bufSection *nextSection;
-    for (bufSection *curr = buffer->firstSection; curr != NULL;
-         curr = nextSection) {
+    bufSection *curr = buffer->firstSection;
+    while (curr) {
         nextSection = curr->next;
         free(curr);
+        curr = nextSection;
     }
 
     free(buffer);
 }
 
-int codeGenBufLenght(codeGenBufNode *buffer) {
-    // add the size of the text in this buffer
-    int len = buffer->totalSize;
-
-    // add lenghts of all the inserted buffers
-    bufInsertNode *node = buffer->firstNode;
-    while (node) {
-        for (int i = 0; i < node->size; i++) {
-            len += codeGenBufLenght(node->data[i].childBuff);
-        }
-        node = node->next;
+void codeGenRemoveBuf(codeGenState *state, codeGenBufNode *buffer) {
+    // remove the buffer from the list
+    if (buffer->nextBuf) {
+        buffer->nextBuf->prevBuf = buffer->prevBuf;
+    } else {
+        state->lastBuf = buffer->prevBuf;
+    }
+    if (buffer->prevBuf) {
+        buffer->prevBuf->nextBuf = buffer->nextBuf;
+    } else {
+        state->firstBuf = buffer->nextBuf;
     }
 
-    return len;
+    free(buffer);
 }
 
 int codeGenInsertTxt(const char *txt, codeGenBufNode *buffer) {
@@ -439,30 +482,17 @@ int codeGenInsertTxt(const char *txt, codeGenBufNode *buffer) {
     return 0;
 }
 
-int codeGenInsertBufToTxt(codeGenBufNode *destBuf,
-                          codeGenBufNode *insertedBuf) {
-    bufInsertNode *potentialDest = destBuf->lastNode;
-    if (potentialDest->size >= IFJ_GEN_BUF_INSERT_NUM) {
-        // the last node's capacity is full - we need to create a new one
-        potentialDest = malloc(sizeof(bufInsertNode));
-        if (!potentialDest) {
-            setErrCode(99);
-            return -1;
-        }
+int codeGenInsertBufToTxt(codeGenState *state, codeGenBufNode *destBuf,
+                          codeGenBufNode *insertedBuf, astNode *insertedNode) {
+    // append the sections of the inserted buffer to the dest buffer
+    bufSection *lastBeforeInsert = destBuf->lastSection;
+    lastBeforeInsert->next = insertedBuf->firstSection;
+    destBuf->lastSection = insertedBuf->lastSection;
+    destBuf->totalSize += insertedBuf->totalSize;
 
-        potentialDest->next = NULL;
-        potentialDest->size = 0;
-
-        // we append the new node
-        destBuf->lastNode->next = potentialDest;
-        destBuf->lastNode = potentialDest;
-    }
-    // else potentialDest can stay as the last node in the list
-
-    // insert the new reference to the first viable position
-    potentialDest->data[potentialDest->size++] =
-        (bufInsert){.childBuff = insertedBuf, .textPos = destBuf->totalSize};
-    // update the buffer size
+    // remove the buffer from list but keep the sections inserted into destBuf
+    codeGenRemoveBuf(state, insertedBuf);
+    insertedNode->data.block.bufferPtr = NULL;
 
     return 0;
 }
@@ -471,49 +501,9 @@ int codeGenOutputBuf(char *outBuf, codeGenBufNode *buffer) {
     int len = 0;
 
     // add lenghts of all the inserted buffers
-    bufInsertNode *node = buffer->firstNode;
     bufSection *section = buffer->firstSection;
-    int posInSection = 0;
 
-    while (node) {
-        for (int i = 0; i < node->size; i++) {
-            bufInsert nextInsert = node->data[i];
-            // the nextInsert.textPos will be acting a the number of characters,
-            // that are left to be copied from now on
-
-            // copy the text preceeding each inserted buffer
-            // copy the first section if it can be all copied before the next
-            // insert
-            if (section->size - posInSection < nextInsert.textPos) {
-                memcpy(&outBuf[len], &section->data[posInSection],
-                       section->size - posInSection);
-                len += section->size - posInSection;
-                nextInsert.textPos -= (section->size - posInSection);
-
-                section = section->next;
-            }
-            // copy all the sections, that can be copied whole
-            while (section->size < nextInsert.textPos) {
-                memcpy(&outBuf[len], section->data, section->size);
-                len += section->size;
-                nextInsert.textPos -= section->size;
-
-                section = section->next;
-            }
-            // copy the rest from the section bigger, than what is left to be
-            // copied
-            memcpy(&outBuf[len], &section->data[posInSection],
-                   nextInsert.textPos);
-            len += nextInsert.textPos;
-            posInSection = posInSection + nextInsert.textPos;
-
-            // copy the inserted buffer
-            len += codeGenOutputBuf(&outBuf[len], buffer);
-        }
-        node = node->next;
-    }
-
-    // copy what is left after the last inserted buffer
+    // copy the buffer sections
     while (section) {
         memcpy(&outBuf[len], section->data, section->size);
         len += section->size;
@@ -526,58 +516,67 @@ int codeGenOutputBuf(char *outBuf, codeGenBufNode *buffer) {
     return len;
 }
 
-int codeGenStatementArr(astNode **nodes, size_t count, codeGenBufNode *buffer) {
+int codeGenStatementArr(astNode **nodes, size_t count, codeGenBufNode *buffer,
+                        codeGenState *state, bool leaveVal) {
+
+    // initialize as false (we don't want value from statements, that aren't
+    // last)
+    bool getVal = false;
     for (size_t i = 0; i < count; i++) {
+        // if this is the last statement and we expect value to be left, leave
+        // the value
+        if (i == count - 1) {
+            getVal = leaveVal;
+        }
         // generate all statements. By default don't leave value on stack
         // (return value should be under AST_RETURN)
-        IFJ_GEN_TRY(codeGenStatement(nodes[i], buffer, false), -1);
+        IFJ_GEN_TRY(codeGenStatement(nodes[i], buffer, getVal, state), -1);
     }
     return 0;
 }
 
-int codeGenStatement(astNode *node, codeGenBufNode *buffer, bool leaveVal) {
+int codeGenStatement(astNode *node, codeGenBufNode *buffer, bool leaveVal,
+                     codeGenState *state) {
     // determine the type of node and call appropriate function
     // ignore a function only returning a value on stack if leaveVal is false
     switch (node->type) {
     case AST_VAR_DEF:
-        IFJ_GEN_TRY(codeGenStmtVarDef(node, buffer), -1);
+        IFJ_GEN_TRY(codeGenStmtVarDef(node, buffer, state), -1);
         break;
 
     case AST_ASSIGN:
-        IFJ_GEN_TRY(codeGenStmtAssign(node, buffer), -1);
+        IFJ_GEN_TRY(codeGenStmtAssign(node, buffer, state), -1);
         break;
 
     case AST_IF:
-        IFJ_GEN_TRY(codeGenStmtIf(node, buffer), -1);
+        IFJ_GEN_TRY(codeGenStmtIf(node, buffer, state, leaveVal), -1);
         break;
 
     case AST_WHILE:
-        IFJ_GEN_TRY(codeGenStmtWhile(node, buffer), -1);
+        IFJ_GEN_TRY(codeGenStmtWhile(node, buffer, state), -1);
         break;
 
     case AST_FOR:
-        IFJ_GEN_TRY(codeGenStmtFor(node, buffer), -1);
+        IFJ_GEN_TRY(codeGenStmtFor(node, buffer, state), -1);
         break;
 
     case AST_FUNC_CALL:
-        if (leaveVal) {
-            IFJ_GEN_TRY(codeGenStmtFuncCall(node, buffer, leaveVal), -1);
-        }
+        IFJ_GEN_TRY(codeGenStmtFuncCall(node, buffer, leaveVal, state), -1);
         break;
 
     case AST_RETURN:
-        IFJ_GEN_TRY(codeGenStmtReturn(node, buffer), -1);
+        IFJ_GEN_TRY(codeGenStmtReturn(node, buffer, state), -1);
         break;
 
     case AST_BINOP:
         if (leaveVal) {
-            IFJ_GEN_TRY(codeGenStmtBinOp(node, buffer), -1);
+            IFJ_GEN_TRY(codeGenStmtBinOp(node, buffer, state), -1);
         }
         break;
 
     case AST_UNOP:
         if (leaveVal) {
-            IFJ_GEN_TRY(codeGenStmtUnOp(node, buffer), -1);
+            IFJ_GEN_TRY(codeGenStmtUnOp(node, buffer, state), -1);
         }
         break;
 
@@ -594,7 +593,13 @@ int codeGenStatement(astNode *node, codeGenBufNode *buffer, bool leaveVal) {
         break;
 
     case AST_BLOCK:
-        IFJ_GEN_TRY(codeGenStmtBlock(node, buffer), -1);
+        IFJ_GEN_TRY(codeGenStmtBlock(node, buffer, state, leaveVal), -1);
+        break;
+
+    case AST_INT2DOUBLE:
+        if (leaveVal) {
+            IFJ_GEN_TRY(codeGenStmtInt2Double(node, buffer, state), -1);
+        }
         break;
 
     default:
@@ -605,7 +610,8 @@ int codeGenStatement(astNode *node, codeGenBufNode *buffer, bool leaveVal) {
     return 0;
 }
 
-int codeGenStmtVarDef(astNode *varDef, codeGenBufNode *buffer) {
+int codeGenStmtVarDef(astNode *varDef, codeGenBufNode *buffer,
+                      codeGenState *state) {
     // get the name in IFJcode26
     const char *name = codeGenGetVarName(varDef->data.varDef.name);
     GEN_CHECK(name != NULL, -1);
@@ -621,13 +627,15 @@ int codeGenStmtVarDef(astNode *varDef, codeGenBufNode *buffer) {
     // should be left on stack)
 
     // generate the assigned value and expect result on stack
-    IFJ_GEN_TRY(codeGenStatement(varDef->data.varDef.initializer, buffer, true),
-                -1);
+    IFJ_GEN_TRY(
+        codeGenStatement(varDef->data.varDef.initializer, buffer, true, state),
+        -1);
     IFJ_GEN_TRY(codeGenInsertTxt(buf, buffer), -1);
     return 0;
 }
 
-int codeGenStmtAssign(astNode *assign, codeGenBufNode *buffer) {
+int codeGenStmtAssign(astNode *assign, codeGenBufNode *buffer,
+                      codeGenState *state) {
     // get the name in IFJcode26
     const char *name = codeGenGetVarName(assign->data.assign.name);
     GEN_CHECK(name != NULL, -1);
@@ -642,12 +650,14 @@ int codeGenStmtAssign(astNode *assign, codeGenBufNode *buffer) {
     // should be left on stack)
 
     // generate the assigned value and expect result on stack
-    IFJ_GEN_TRY(codeGenStatement(assign->data.assign.value, buffer, true), -1);
+    IFJ_GEN_TRY(
+        codeGenStatement(assign->data.assign.value, buffer, true, state), -1);
     IFJ_GEN_TRY(codeGenInsertTxt(buf, buffer), -1);
     return 0;
 }
 
-int codeGenStmtIf(astNode *ifStmt, codeGenBufNode *buffer) {
+int codeGenStmtIf(astNode *ifStmt, codeGenBufNode *buffer, codeGenState *state,
+                  bool leaveVal) {
     // get a unique label id
     const char *labelId = codeGenGetLabelId(buffer);
     GEN_CHECK(labelId != NULL, -1);
@@ -675,24 +685,28 @@ int codeGenStmtIf(astNode *ifStmt, codeGenBufNode *buffer) {
     // now can release the hold of labelId and generate the subblocks
 
     // the condition leaves result on stack
-    IFJ_GEN_TRY(codeGenStatement(ifStmt->data.ifStmt.condition, buffer, true),
-                -1);
+    IFJ_GEN_TRY(
+        codeGenStatement(ifStmt->data.ifStmt.condition, buffer, true, state),
+        -1);
     IFJ_GEN_TRY(codeGenInsertTxt(headerBuf, buffer), -1);
 
-    // then block
-    IFJ_GEN_TRY(codeGenStatement(ifStmt->data.ifStmt.thenBlock, buffer, false),
+    // then block (if the statement is an leaveVal, leave the result on stack)
+    IFJ_GEN_TRY(codeGenStatement(ifStmt->data.ifStmt.thenBlock, buffer,
+                                 leaveVal, state),
                 -1);
     IFJ_GEN_TRY(codeGenInsertTxt(middleBuf, buffer), -1);
 
     // else block
-    IFJ_GEN_TRY(codeGenStatement(ifStmt->data.ifStmt.elseBlock, buffer, false),
+    IFJ_GEN_TRY(codeGenStatement(ifStmt->data.ifStmt.elseBlock, buffer,
+                                 leaveVal, state),
                 -1);
     IFJ_GEN_TRY(codeGenInsertTxt(footerBuf, buffer), -1);
 
     return 0;
 }
 
-int codeGenStmtWhile(astNode *whileLoop, codeGenBufNode *buffer) {
+int codeGenStmtWhile(astNode *whileLoop, codeGenBufNode *buffer,
+                     codeGenState *state) {
     // get a unique label id
     const char *labelId = codeGenGetLabelId(buffer);
     GEN_CHECK(labelId != NULL, -1);
@@ -722,21 +736,22 @@ int codeGenStmtWhile(astNode *whileLoop, codeGenBufNode *buffer) {
     IFJ_GEN_TRY(codeGenInsertTxt(headerBuf, buffer), -1);
 
     // the condition leaves result on stack
-    IFJ_GEN_TRY(
-        codeGenStatement(whileLoop->data.whileStmt.condition, buffer, true),
-        -1);
+    IFJ_GEN_TRY(codeGenStatement(whileLoop->data.whileStmt.condition, buffer,
+                                 true, state),
+                -1);
     IFJ_GEN_TRY(codeGenInsertTxt(condCheckBuf, buffer), -1);
 
     // body of the loop
-    IFJ_GEN_TRY(
-        codeGenStatement(whileLoop->data.whileStmt.bodyBlock, buffer, false),
-        -1);
+    IFJ_GEN_TRY(codeGenStatement(whileLoop->data.whileStmt.bodyBlock, buffer,
+                                 false, state),
+                -1);
     IFJ_GEN_TRY(codeGenInsertTxt(footerBuf, buffer), -1);
 
     return 0;
 }
 
-int codeGenStmtFor(astNode *forLoop, codeGenBufNode *buffer) {
+int codeGenStmtFor(astNode *forLoop, codeGenBufNode *buffer,
+                   codeGenState *state) {
     // get an unique label id (for labels and internal variables)
     const char *uqId = codeGenGetLabelId(buffer);
     size_t uqIdLen = strlen(uqId);
@@ -813,10 +828,12 @@ int codeGenStmtFor(astNode *forLoop, codeGenBufNode *buffer) {
     // now we can release hold of the uqId
 
     // evaluate the start, end and step values and push them to stack
-    IFJ_GEN_TRY(codeGenStatement(forLoop->data.forStmt.start, buffer, true),
-                -1);
-    IFJ_GEN_TRY(codeGenStatement(forLoop->data.forStmt.end, buffer, true), -1);
-    IFJ_GEN_TRY(codeGenStatement(forLoop->data.forStmt.step, buffer, true), -1);
+    IFJ_GEN_TRY(
+        codeGenStatement(forLoop->data.forStmt.start, buffer, true, state), -1);
+    IFJ_GEN_TRY(
+        codeGenStatement(forLoop->data.forStmt.end, buffer, true, state), -1);
+    IFJ_GEN_TRY(
+        codeGenStatement(forLoop->data.forStmt.step, buffer, true, state), -1);
 
     // insert the header
     IFJ_GEN_TRY(codeGenInsertTxt(headerBuf, buffer), -1);
@@ -824,15 +841,15 @@ int codeGenStmtFor(astNode *forLoop, codeGenBufNode *buffer) {
     // insert all the guards
     for (size_t i = 0; i < forLoop->data.forStmt.guardCount; i++) {
         // leave the evaluation of the boolean value on stack
-        IFJ_GEN_TRY(
-            codeGenStatement(forLoop->data.forStmt.guards[i], buffer, true),
-            -1);
+        IFJ_GEN_TRY(codeGenStatement(forLoop->data.forStmt.guards[i], buffer,
+                                     true, state),
+                    -1);
         IFJ_GEN_TRY(codeGenInsertTxt(guardCheckBuf, buffer), -1);
     }
 
     // generate the body of the for loop
-    IFJ_GEN_TRY(codeGenStatement(forLoop->data.forStmt.body, buffer, false),
-                -1);
+    IFJ_GEN_TRY(
+        codeGenStatement(forLoop->data.forStmt.body, buffer, false, state), -1);
 
     // insert the footer
     IFJ_GEN_TRY(codeGenInsertTxt(footerBuf, buffer), -1);
@@ -841,16 +858,16 @@ int codeGenStmtFor(astNode *forLoop, codeGenBufNode *buffer) {
 }
 
 int codeGenStmtFuncCall(astNode *funcCall, codeGenBufNode *buffer,
-                        bool leaveVal) {
+                        bool leaveVal, codeGenState *state) {
     // generate the statements from last to first (they leave their value on the
     // stack)
     for (size_t i = funcCall->data.funcCall.argCount; i != 0; i--) {
         IFJ_GEN_TRY(codeGenStatement(funcCall->data.funcCall.arguments[i - 1],
-                                     buffer, true),
+                                     buffer, true, state),
                     -1);
     }
 
-    int builtin = codeGenBuiltinFunCall(funcCall, buffer);
+    int builtin = codeGenBuiltinFunCall(funcCall, buffer, state);
     if (builtin == -1) {
         return -1;
     }
@@ -869,7 +886,11 @@ int codeGenStmtFuncCall(astNode *funcCall, codeGenBufNode *buffer,
 
     // if no result should be left on stack and the function will return one,
     // pop it
-    varType retType = symTableFindFun(funcCall->data.funcCall.funcName).retType;
+    funData funData = symTableFindFun(funcCall->data.funcCall.funcName);
+    GEN_CHECK_PRINT(funData.id != NULL, -1,
+                    "Function symbol %s not in symTable\n",
+                    funcCall->data.funcCall.funcName);
+    varType retType = funData.retType;
     if (!leaveVal && retType != UNIT) {
         IFJ_GEN_TRY(codeGenInsertTxt("POPS GF@void\n", buffer), -1);
     }
@@ -877,11 +898,12 @@ int codeGenStmtFuncCall(astNode *funcCall, codeGenBufNode *buffer,
     return 0;
 }
 
-int codeGenStmtReturn(astNode *ret, codeGenBufNode *buffer) {
+int codeGenStmtReturn(astNode *ret, codeGenBufNode *buffer,
+                      codeGenState *state) {
     // generate the RHS if the ptr to it isn't NULL, it will leave its result on
     // the stack
     if (ret->data.returnStmt.value) {
-        codeGenStatement(ret->data.returnStmt.value, buffer, true);
+        codeGenStatement(ret->data.returnStmt.value, buffer, true, state);
     }
 
     // jump to the end of the function for return
@@ -895,10 +917,14 @@ int codeGenStmtReturn(astNode *ret, codeGenBufNode *buffer) {
     return 0;
 }
 
-int codeGenStmtBinOp(astNode *binOp, codeGenBufNode *buffer) {
-    // generate the 2 parameters and leave their values on stack
-    IFJ_GEN_TRY(codeGenStatement(binOp->data.binop.left, buffer, true), -1);
-    IFJ_GEN_TRY(codeGenStatement(binOp->data.binop.right, buffer, true), -1);
+int codeGenStmtBinOp(astNode *binOp, codeGenBufNode *buffer,
+                     codeGenState *state) {
+    // generate the 2 parameters and leave their values on stack (convert from
+    // int to float if nescessary)
+    IFJ_GEN_TRY(codeGenStatement(binOp->data.binop.left, buffer, true, state),
+                -1);
+    IFJ_GEN_TRY(codeGenStatement(binOp->data.binop.right, buffer, true, state),
+                -1);
 
     // generate the operation
     switch (binOp->data.binop.op) {
@@ -962,24 +988,26 @@ int codeGenStmtBinOp(astNode *binOp, codeGenBufNode *buffer) {
     return 0;
 }
 
-int codeGenStmtUnOp(astNode *unOp, codeGenBufNode *buffer) {
+int codeGenStmtUnOp(astNode *unOp, codeGenBufNode *buffer,
+                    codeGenState *state) {
     // if the operator is unary - then we also need a prefix
-    if (unOp->data.unop.op == TOKEN_MINUS) {
+    if (unOp->data.unop.op == UNARY_MINUS) {
         IFJ_GEN_TRY(codeGenInsertTxt("PUSHS int@0\n", buffer), -1);
     }
 
     // generate the operand and leave its value on stack
-    IFJ_GEN_TRY(codeGenStatement(unOp->data.unop.operand, buffer, true), -1);
+    IFJ_GEN_TRY(codeGenStatement(unOp->data.unop.operand, buffer, true, state),
+                -1);
 
     // generate the operator suffix
     switch (unOp->data.unop.op) {
-    case TOKEN_NOT:
+    case NOT:
         IFJ_GEN_TRY(codeGenInsertTxt("NOTS\n", buffer), -1);
         break;
-    case TOKEN_PLUS:
+    case UNARY_PLUS:
         // no further instructions needed
         break;
-    case TOKEN_MINUS:
+    case UNARY_MINUS:
         IFJ_GEN_TRY(codeGenInsertTxt("SUBS\n", buffer), -1);
         break;
     default:
@@ -997,16 +1025,18 @@ int codeGenStmtLiteral(astNode *lit, codeGenBufNode *buffer) {
     char buf[IFJ_GEN_MAX_ID_LEN];
     switch (lit->data.literal.litType) {
     case TOKEN_INT_LITERAL:
-        sprintf(buf, "int@%li\n", lit->data.literal.attribute.intValue);
+        sprintf(buf, "PUSHS int@%li\n", lit->data.literal.attribute.intValue);
         break;
     case TOKEN_BOOL_LITERAL:
-        sprintf(buf, "bool@%s\n", "true");
+        sprintf(buf, "PUSHS bool@%s\n", "true");
         break;
     case TOKEN_DOUBLE_LITERAL:
-        sprintf(buf, "float@%a\n", lit->data.literal.attribute.doubleValue);
+        sprintf(buf, "PUSHS float@%a\n",
+                lit->data.literal.attribute.doubleValue);
         break;
     case TOKEN_STRING_LITERAL:
         // call a function to handle the string literal
+
         return codeGenStmtStringLit(lit->data.literal.attribute.text.data,
                                     lit->data.literal.attribute.text.length,
                                     buffer);
@@ -1029,14 +1059,15 @@ int codeGenStmtStringLit(const char *str, size_t lenght,
                          codeGenBufNode *buffer) {
     // each character can be replaced with at most 4 characters of escape
     // sequence + lenght of the prefix
-    char prefix[] = "string@";
+    char prefix[] = "PUSHS string@";
     size_t prefixLen = strlen(prefix);
-    char buf[lenght * 4 + prefixLen + 1];
+    char buf[lenght * 4 + prefixLen + 2];
 
     // insert the prefix
     strcpy(buf, prefix);
     size_t bufIdx = prefixLen;
 
+    // printf("generating literal %s\n", str);
     for (size_t i = 0; i < lenght; i++) {
         // convert the character to an escape sequence if needed
         char c = str[i];
@@ -1045,11 +1076,11 @@ int codeGenStmtStringLit(const char *str, size_t lenght,
             buf[bufIdx] = '\\';
 
             // convert to decimal
-            buf[bufIdx + 3] = c % 10;
+            buf[bufIdx + 3] = (c % 10) + '0';
             c /= 10;
-            buf[bufIdx + 2] = c % 10;
+            buf[bufIdx + 2] = (c % 10) + '0';
             c /= 10;
-            buf[bufIdx + 1] = c;
+            buf[bufIdx + 1] = c + '0';
             bufIdx += 4;
         }
         // else just copy the character
@@ -1057,6 +1088,9 @@ int codeGenStmtStringLit(const char *str, size_t lenght,
             buf[bufIdx++] = c;
         }
     }
+    // printf("generated literal %s of %lu characters\n", buf, bufIdx);
+    buf[bufIdx++] = '\n';
+    buf[bufIdx] = '\0';
 
     IFJ_GEN_TRY(codeGenInsertTxt(buf, buffer), -1);
     return 0;
@@ -1077,17 +1111,45 @@ int codeGenStmtIdentif(astNode *identif, codeGenBufNode *buffer) {
     return 0;
 }
 
-int codeGenStmtBlock(astNode *block, codeGenBufNode *buffer) {
+int codeGenStmtBlock(astNode *block, codeGenBufNode *buffer,
+                     codeGenState *state, bool expectVal) {
     // check if the child block has been generated
     GEN_CHECK_PRINT(block->data.block.bufferPtr != NULL, -1,
                     "A child block at %p wasn't generated yet", block);
 
+    codeGenBufNode *insertedBuf = (codeGenBufNode *)block->data.block.bufferPtr;
+    if (expectVal) {
+        if (insertedBuf->leftVal == false) {
+            // we expect value but no value on stack
+            GEN_CHECK_PRINT(false, -1,
+                            "Expected child block to leave value but the block "
+                            "hasn't been instructed to\n");
+        }
+    } else {
+        if (insertedBuf->leftVal == true) {
+            // we don't want a value but the block left one (can fix)
+            IFJ_GEN_TRY(codeGenInsertTxt("POPS GF@void\n", buffer), -1);
+        }
+    }
+
     // insert a reference to the child block
-    IFJ_GEN_TRY(codeGenInsertBufToTxt(buffer, block->data.block.bufferPtr), -1);
+    IFJ_GEN_TRY(codeGenInsertBufToTxt(state, buffer,
+                                      block->data.block.bufferPtr, block),
+                -1);
     return 0;
 }
 
-int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer) {
+int codeGenStmtInt2Double(astNode *conv, codeGenBufNode *buffer,
+                          codeGenState *state) {
+    IFJ_GEN_TRY(
+        codeGenStatement(conv->data.int2doubleConv.value, buffer, true, state),
+        -1);
+    IFJ_GEN_TRY(codeGenInsertTxt("INT2FLOATS\n", buffer), -1);
+    return 0;
+}
+
+int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer,
+                          codeGenState *state) {
     const char *name = funcCall->data.funcCall.funcName;
     if (strcmp(name, "print") == 0) {
         // one value of unknown type should be on stack
@@ -1110,6 +1172,16 @@ int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer) {
                     -1);
         return 0;
     }
+    if (strcmp(name, "readInt") == 0) {
+        // generate a call
+        state->builtinNeeded[FUN_READINT] = true;
+        return 1;
+    }
+    if (strcmp(name, "readDouble") == 0) {
+        // generate a call
+        state->builtinNeeded[FUN_READDOUBLE] = true;
+        return 1;
+    }
     if (strcmp(name, "toStr") == 0) {
         // decide on what to use depending on the parameter typ
         switch (funcCall->data.funcCall.argIfAny) {
@@ -1124,6 +1196,7 @@ int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer) {
         case BOOL:
             // handle by call (the function will take only a boolean as
             // parameter)
+            state->builtinNeeded[FUN_BOOLTOSTR] = true;
             return 1;
             break;
         case UNIT:
@@ -1152,6 +1225,16 @@ int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer) {
                     -1);
         return 0;
     }
+    if (strcmp(name, "subStr") == 0) {
+        // generate a call
+        state->builtinNeeded[FUN_SUBSTR] = true;
+        return 1;
+    }
+    if (strcmp(name, "ord") == 0) {
+        // generate a call
+        state->builtinNeeded[FUN_ORD] = true;
+        return 1;
+    }
     if (strcmp(name, "chr") == 0) {
         // one value of type int should be on stack
         // no error handeling left to the interpretor of IFJcode26
@@ -1169,11 +1252,12 @@ int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer) {
 const char *codeGenGetVarName(const char *id) {
     static char nameBuf[IFJ_GEN_MAX_ID_LEN];
 
-    int uniqueId;
+    static int uniqueId;
     // find the name in symTable
     varData nameData = symTableFindVar(id, &uniqueId);
     GEN_CHECK_PRINT(nameData.id != NULL, NULL,
                     "The variable name %s not found in symtable\n", id);
+    (void)nameData;
 
     // construct the name in IFJ26
     sprintf(nameBuf, "LF@%s$%i", id, uniqueId);

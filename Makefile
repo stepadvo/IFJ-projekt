@@ -23,7 +23,7 @@ OBJECTS = compiler.o parser.o ast.o lexer.o token.o symtable.o bst.o errcode.o a
 TEST_BST_O = bst.o test_bst.o errcode.o
 TEST_SYMTABLE_O = bst.o symtable.o test_symtable.o errcode.o
 TEST_AST_O = ast.o test_ast.o
-TEST_GEN_O = ast.o symtable.o bst.o generator.o errcode.o
+TEST_GEN_O = ast.o symtable.o bst.o generator.o test_generator.o errcode.o
 
 #rules:
 #add the build rules here
@@ -46,6 +46,12 @@ printast:
 	$(MAKE) CFLAGS="$(CFLAGS) -DDEBUG_AST" all
 	rm -f *.o
 
+test_generator_function: generator.o test_generator_functional.o symtable.o errcode.o bst.o ast.o
+	$(MAKE) clean
+	$(MAKE) CFLAGS="$(CFLAGS) -DIFJ_GEN_DEBUG" $^
+	$(CC) $(CFLAGS) -o $@.out $^
+	./test_generator.sh
+
 define DEFINE_TEST_RULES =
 $($(1)): $($(1))_build
 	./$($(1)).out
@@ -56,4 +62,4 @@ endef
 
 $(foreach t,$(TEST_STEMS),$(eval $(call DEFINE_TEST_RULES,$(t))))
 
-.PHONY: all clean format printast test
+.PHONY: all clean format printast test test_generator_function

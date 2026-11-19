@@ -38,7 +38,7 @@ TEST(Ast, EmptyBlock) {
     ASSERT_NE(n, nullptr);
     EXPECT_EQ(n->type, AST_BLOCK);
     EXPECT_EQ(n->data.block.count, 0u);
-    EXPECT_EQ(n->data.block.bufferNum, -1);
+    EXPECT_EQ(n->data.block.bufferPtr, nullptr);
     freeAst(n);
 }
 TEST(Ast, BlockAppendOrderAndCapacity) {
