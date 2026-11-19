@@ -43,25 +43,34 @@ typedef enum {
     /**< A reference to a variable or parameter by its name. */
     AST_IDENTIFIER,
     /**< A block of statements grouped together, usually in braces. */
-    AST_BLOCK
+    AST_BLOCK,
+    /**< A convertion from INT to DOUBLE (for the generator)*/
+    AST_INT2DOUBLE
 } astNodeType;
 
-/** @brief _ */
+/** @brief Type of unary oparators. */
 typedef enum {
-    PLUS,          /**< Plus: "+". */
+    UNARY_MINUS, /**< Unary minus: "-[val]" */
+    NOT,         /**< Not: "![val]" */
+    UNARY_PLUS   /**< Unary plus: "+[val]" */
+} astUnopType;
+
+/** @brief Type of binary oparators */
+typedef enum {
+    PLUS,          /**< Plus: "+" */
     CONCATENATION, /**< Concatenation: "[str] + [str]" */
-    MINUS,         /**< Minus: "-". */
-    MULTIPLY,      /**< Multiplication: "*". */
-    DIVIDE,        /**< Division: "[float] / [float]". */
+    MINUS,         /**< Minus: "-" */
+    MULTIPLY,      /**< Multiplication: "*" */
+    DIVIDE,        /**< Division: "[float] / [float]" */
     I_DIVIDE,      /**< Integer divison: "[int] / [int]" */
-    EQUAL,         /**< Equality: "==". */
-    NOT_EQUAL,     /**< Inequality: "!=". */
-    LESS,          /**< Less than: "<". */
-    LESS_EQUAL,    /**< Less than or equal to: "<=". */
-    GREATER,       /**< Greater than: ">". */
-    GREATER_EQUAL, /**< Greater than or equal to: ">=". */
-    AND,           /**< Logical conjunction: "&&". */
-    OR             /**< Logical disjunction: "||". */
+    EQUAL,         /**< Equality: "==" */
+    NOT_EQUAL,     /**< Inequality: "!=" */
+    LESS,          /**< Less than: "<" */
+    LESS_EQUAL,    /**< Less than or equal to: "<=" */
+    GREATER,       /**< Greater than: ">" */
+    GREATER_EQUAL, /**< Greater than or equal to: ">=" */
+    AND,           /**< Logical conjunction: "&&" */
+    OR             /**< Logical disjunction: "||" */
 } astBinopType;
 
 /** @brief Forward declaration of the AST node structure. */
@@ -109,25 +118,20 @@ struct astNode {
          * Operator precedence is determined by how the tree is structured.
          */
         struct {
-            /**< The operator token (+, *, ==, etc.). */
+            /**< The operator (+, *, ==, etc.). */
             astBinopType op;
             /**< The left-hand side of the operation. */
             astNode *left;
             /**< The right-hand side of the operation. */
             astNode *right;
-            /**< If [int] binop [float]:
-             * ~> [float] binop [float]
-             */
-            bool convertLeft;
-            bool convertRight;
         } binop;
 
         /**
          * @brief A unary operation (like negation or logical NOT).
          */
         struct {
-            /**< The unary operator token (-, +, !). */
-            TokenType op;
+            /**< The unary operator (-, +, !). */
+            astUnopType op;
             /**< The expression being modified. */
             astNode *operand;
         } unop;
@@ -215,7 +219,7 @@ struct astNode {
             size_t capacity;
             /**< Used internally by the code generator. Safe to ignore for now.
              */
-            int bufferNum;
+            void *bufferPtr;
         } block;
 
         /**
@@ -286,6 +290,14 @@ struct astNode {
             /**< The expression to return. NULL if returning nothing. */
             astNode *value;
         } returnStmt;
+
+        /**
+         * @brief A int to double convertion
+         */
+        struct {
+            /**< The expression to be converted */
+            astNode *value;
+        } int2doubleConv;
     } data;
 };
 
@@ -404,7 +416,7 @@ astNode *createBinopNode(astBinopType op, astNode *left, astNode *right);
  * @param operand The expression being modified. (The node takes ownership).
  * @return A new AST_UNOP node.
  */
-astNode *createUnopNode(TokenType op, astNode *operand);
+astNode *createUnopNode(astUnopType op, astNode *operand);
 
 /**
  * @brief Creates an identifier reference node.
@@ -448,6 +460,13 @@ astNode *createAssignNode(char *name, astNode *value);
  * @return A new AST_RETURN node.
  */
 astNode *createReturnNode(astNode *value);
+
+/**
+ * @brief Creates a int to double convertion node.
+ * @param
+ * @return A new AST_INT2DOUBLE node.
+ */
+astNode *createInt2DoubleNode(astNode *convertee);
 
 /**
  * @brief Recursively frees an AST node and all its children.

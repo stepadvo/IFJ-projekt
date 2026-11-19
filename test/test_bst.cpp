@@ -96,7 +96,7 @@ TEST_F(BstTest, RemoveNodes) {
     EXPECT_EQ(BSTSearch(tree, "cat"), nullptr);
 
     // Try removing non-existent node
-    EXPECT_EQ(BSTRemove(tree, "fish", &oldData), -1);
+    EXPECT_EQ(BSTRemove(tree, "fish", &oldData), -2);
     EXPECT_EQ(BSTSize(tree), 2);
 }
 

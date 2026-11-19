@@ -14,9 +14,10 @@ TEST_SYMTABLE = test_symtable
 TEST_AST = test_ast
 TEST_LEXER = test_lexer
 TEST_TOKEN = test_token
+TEST_GEN = test_gen
 
 #add all test targets
-TEST_STEMS = TEST_BST TEST_SYMTABLE TEST_AST TEST_LEXER TEST_TOKEN # TEST_EXAMPLE ...
+TEST_STEMS = TEST_BST TEST_SYMTABLE TEST_AST TEST_LEXER TEST_TOKEN TEST_GEN # TEST_EXAMPLE ...
 
 #objects:
 OBJECTS = compiler.o parser.o ast.o lexer.o token.o symtable.o bst.o errcode.o ast_print.o expression.o
@@ -26,6 +27,7 @@ TEST_SYMTABLE_O = bst.o symtable.o test_symtable.o errcode.o
 TEST_AST_O = ast.o test_ast.o
 TEST_LEXER_O = test_lexer.o lexer.o token.o errcode.o
 TEST_TOKEN_O = test_token.o token.o
+TEST_GEN_O = ast.o symtable.o bst.o generator.o test_generator.o errcode.o
 
 #rules:
 all: build
@@ -45,6 +47,13 @@ test: $(foreach t,$(TEST_STEMS),$($(t))_build)
 printast:
 	$(MAKE) clean
 	$(MAKE) CFLAGS="$(CFLAGS) -DDEBUG_AST" all
+	rm -f *.o
+
+test_generator_function: generator.o test_generator_functional.o symtable.o errcode.o bst.o ast.o
+	$(MAKE) clean
+	$(MAKE) CFLAGS="$(CFLAGS) -DIFJ_GEN_DEBUG" $^
+	$(CC) $(CFLAGS) -o $@.out $^
+	./test_generator.sh
 
 define DEFINE_TEST_RULES =
 $($(1)): $($(1))_build
@@ -56,4 +65,4 @@ endef
 
 $(foreach t,$(TEST_STEMS),$(eval $(call DEFINE_TEST_RULES,$(t))))
 
-.PHONY: all clean format printast test
+.PHONY: all clean format printast test test_generator_function

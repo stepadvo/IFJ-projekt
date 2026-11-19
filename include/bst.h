@@ -50,7 +50,8 @@ int BSTInsert(bst_t *tree, const char *key, size_t data, char **keyPtr);
  * @param oldData will be set to the data of the removed node when a node with
  * matching key is found and the ptr is not NULL
  * @return  0 on successfull removal
- *          -1 when the key is not found
+ *          -1 on memory allocation error
+ *          -2 when the key is not found
  */
 int BSTRemove(bst_t *tree, const char *key, size_t *oldData);
 
