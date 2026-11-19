@@ -18,6 +18,7 @@
 
 static Lexer *lexer = NULL;
 static Token currentToken = {0};
+static size_t currentLineIndent = 0;
 
 /**
  * @brief Reads the next token.
@@ -27,12 +28,16 @@ static bool advance(void) {
     LexerStatus status = getToken(lexer, &currentToken);
 
     /** set lexer/internal error */
-    if (status == LEXER_OK)
+    if (status == LEXER_OK) {
+        if (currentToken.startsLogicalLine)
+            currentLineIndent = currentToken.indent;
         return true;
+    }
     if (status == LEXER_INTERNAL_ERROR)
-        ERRCODE = 99;
-    else if (ERRCODE == 0)
-        ERRCODE = 1;
+        setErrCode(99);
+    else
+        setErrCode(1);
+
     return false;
 }
 
@@ -43,9 +48,7 @@ static bool advance(void) {
 static void syntaxError(const char *message) {
     fprintf(stderr, "Syntax error at line %zu: %s\n", currentToken.line,
             message);
-    if (ERRCODE == 0) {
-        ERRCODE = 2;
-    }
+    setErrCode(2);
 
     return;
 }
@@ -220,8 +223,33 @@ static bool parseParameters(astFuncParam **params, size_t *count) {
     }
 }
 
-/** @brief Parses an expression. @return Expression AST, or NULL on error. */
+/** @brief Indicates which tokens can end an expression in CONTROL syntax. */
+typedef struct {
+    bool stopAtElse;
+    bool stopAtRange;
+    bool stopAtBy;
+    bool stopAtGuard;
+} ExpressionStops;
+
+/**
+ * @brief Parses an expression.
+ * @return Expression AST, or NULL on error.
+ */
 static astNode *parseExpression(void);
+static astNode *parseExpressionWithStops(ExpressionStops stops);
+static astNode *parseIf(size_t indent, bool isExpression,
+                        ExpressionStops stops);
+static astNode *parseStatement(size_t indent, ExpressionStops stops);
+
+/**
+ * @brief Checks whether the current identifier matches a contextual word.
+ * @param word Word used by the for syntax.
+ * @return True if the current token matches the word.
+ */
+static bool isIdentifierWord(const char *word) {
+    return currentToken.type == TOKEN_IDENTIFIER &&
+           strcmp(currentToken.attribute.text.data, word) == 0;
+}
 
 /**
  * @brief Parses a function call after its name.
@@ -303,13 +331,43 @@ static bool isBinarySymbol(ExprSymbol symbol) {
 }
 
 /**
+ * @brief Checks whether a token is an operator.
+ * @param type Token to classify.
+ * @return True for operator tokens.
+ */
+static bool isOperatorToken(TokenType type) {
+    switch (type) {
+    case TOKEN_PLUS:
+    case TOKEN_MINUS:
+    case TOKEN_MULTIPLY:
+    case TOKEN_DIVIDE:
+    case TOKEN_EQUAL:
+    case TOKEN_NOT_EQUAL:
+    case TOKEN_LESS:
+    case TOKEN_LESS_EQUAL:
+    case TOKEN_GREATER:
+    case TOKEN_GREATER_EQUAL:
+    case TOKEN_NOT:
+    case TOKEN_AND:
+    case TOKEN_OR:
+    case TOKEN_ASSIGN:
+    case TOKEN_LEFT_ARROW:
+    case TOKEN_DOT:
+        return true;
+    default:
+        return false;
+    }
+}
+
+/**
  * @brief Finds the table symbol for the current token.
  * @param expectsOperand True when the next token should start a value.
  * @param openParens Number of unmatched '(' on the stack.
+ * @param stops Tokens that may end the expression.
  * @return Symbol for the precedence table.
  */
-static ExprSymbol expressionInputSymbol(bool expectsOperand,
-                                        size_t openParens) {
+static ExprSymbol expressionInputSymbol(bool expectsOperand, size_t openParens,
+                                        ExpressionStops stops) {
     /** these tokens end the expression only outside parentheses */
     if (openParens == 0) {
         switch (currentToken.type) {
@@ -319,19 +377,43 @@ static ExprSymbol expressionInputSymbol(bool expectsOperand,
         case TOKEN_KW_THEN:
         case TOKEN_KW_DO:
             return EXPR_END;
+        case TOKEN_KW_ELSE:
+            if (stops.stopAtElse)
+                return EXPR_END;
+            break;
+        case TOKEN_KW_IF:
+            if (!expectsOperand && stops.stopAtGuard)
+                return EXPR_END;
+            break;
+        case TOKEN_IDENTIFIER:
+            if (!expectsOperand) {
+                if (stops.stopAtRange &&
+                    (isIdentifierWord("to") || isIdentifierWord("until")))
+                    return EXPR_END;
+                if (stops.stopAtBy && isIdentifierWord("by"))
+                    return EXPR_END;
+            }
+            break;
         default:
             break;
         }
     }
+
+    /** if-expression is a value when an operand is expected */
+    if (currentToken.type == TOKEN_KW_IF && expectsOperand)
+        return EXPR_VALUE;
 
     return exprSymbolFromToken(currentToken.type, expectsOperand);
 }
 
 /**
  * @brief Creates an AST node for the current value.
+ * @param stops Tokens that may end the expression.
  * @return Value node, or NULL if the token is not a value.
  */
-static astNode *expressionValueNode(void) {
+static astNode *expressionValueNode(ExpressionStops stops) {
+    if (currentToken.type == TOKEN_KW_IF)
+        return parseIf(currentLineIndent, true, stops);
     if (currentToken.type == TOKEN_IDENTIFIER) {
         char *name = copyName();
         if (!advance()) {
@@ -350,38 +432,75 @@ static astNode *expressionValueNode(void) {
 }
 
 /**
- * @brief Converts a type of TokenType to astBinopType.
- * @param type The converted type.
- * @return The returned type.
+ * @brief Converts a lexer token to a binary AST operator.
+ * @param type Lexer token type.
+ * @param result Receives the corresponding AST operator.
+ * @return True if the token represents a binary operator.
  */
-static astBinopType convertTokenToAstBinop(TokenType type) {
+static bool convertTokenToAstBinop(TokenType type, astBinopType *result) {
     switch (type) {
     case TOKEN_PLUS:
-        return PLUS;
+        *result = PLUS;
+        break;
     case TOKEN_MINUS:
-        return MINUS;
+        *result = MINUS;
+        break;
     case TOKEN_MULTIPLY:
-        return MULTIPLY;
+        *result = MULTIPLY;
+        break;
     case TOKEN_DIVIDE:
-        return DIVIDE;
+        *result = DIVIDE;
+        break;
     case TOKEN_EQUAL:
-        return EQUAL;
+        *result = EQUAL;
+        break;
     case TOKEN_NOT_EQUAL:
-        return NOT_EQUAL;
+        *result = NOT_EQUAL;
+        break;
     case TOKEN_LESS:
-        return LESS;
+        *result = LESS;
+        break;
     case TOKEN_LESS_EQUAL:
-        return LESS_EQUAL;
+        *result = LESS_EQUAL;
+        break;
     case TOKEN_GREATER:
-        return GREATER;
+        *result = GREATER;
+        break;
     case TOKEN_GREATER_EQUAL:
-        return GREATER_EQUAL;
+        *result = GREATER_EQUAL;
+        break;
     case TOKEN_AND:
-        return AND;
+        *result = AND;
+        break;
     case TOKEN_OR:
-        return OR;
+        *result = OR;
+        break;
     default:
-        return -1;
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * @brief Converts a lexer token to a unary AST operator.
+ * @param type Lexer token type.
+ * @param result Receives the corresponding AST operator.
+ * @return True if the token represents a unary operator.
+ */
+static bool convertTokenToAstUnop(TokenType type, astUnopType *result) {
+    switch (type) {
+    case TOKEN_MINUS:
+        *result = UNARY_MINUS;
+        return true;
+    case TOKEN_NOT:
+        *result = NOT;
+        return true;
+    case TOKEN_PLUS:
+        *result = UNARY_PLUS;
+        return true;
+    default:
+        return false;
     }
 }
 
@@ -412,7 +531,11 @@ static bool reduceExpression(ExprStack *stack) {
 
     /** unary E -> E */
     if (op->symbol == EXPR_UNARY) {
-        astNode *node = createUnopNode(op->tokenType, last->node);
+        astUnopType unOp;
+        if (!convertTokenToAstUnop(op->tokenType, &unOp)) {
+            return false;
+        }
+        astNode *node = createUnopNode(unOp, last->node);
         if (node == NULL) {
             return false;
         }
@@ -430,8 +553,11 @@ static bool reduceExpression(ExprStack *stack) {
     }
 
     ExprStackItem *left = &stack->items[count - 3];
-    astNode *node = createBinopNode(convertTokenToAstBinop(op->tokenType),
-                                    left->node, last->node);
+    astBinopType binOp;
+    if (!convertTokenToAstBinop(op->tokenType, &binOp)) {
+        return false;
+    }
+    astNode *node = createBinopNode(binOp, left->node, last->node);
     if (node == NULL) {
         return false;
     }
@@ -479,9 +605,11 @@ static bool reduceParentheses(ExprStack *stack) {
 /**
  * @brief Builds an expression AST using the precedence table.
  * @param firstValue Already-read first value, or NULL.
+ * @param stops Tokens that may end the expression.
  * @return Expression AST, or NULL on error.
  */
-static astNode *parseExpressionFromValue(astNode *firstValue) {
+static astNode *parseExpressionFromValue(astNode *firstValue,
+                                         ExpressionStops stops) {
     ExprStack stack;
     exprStackInit(&stack);
     exprStackPush(&stack, (ExprStackItem){.symbol = EXPR_END});
@@ -496,7 +624,8 @@ static astNode *parseExpressionFromValue(astNode *firstValue) {
     bool expectsOperand = firstValue == NULL;
 
     while (true) {
-        ExprSymbol input = expressionInputSymbol(expectsOperand, openParens);
+        ExprSymbol input =
+            expressionInputSymbol(expectsOperand, openParens, stops);
         const ExprStackItem *terminal = exprStackTopTerminal(&stack);
         if (terminal == NULL || input == EXPR_INVALID) {
             syntaxError("invalid expression");
@@ -509,7 +638,7 @@ static astNode *parseExpressionFromValue(astNode *firstValue) {
             ExprStackItem item = {.symbol = input,
                                   .tokenType = currentToken.type};
             if (input == EXPR_VALUE) {
-                item.node = expressionValueNode();
+                item.node = expressionValueNode(stops);
                 if (item.node == NULL) {
                     syntaxError("expected value");
                     break;
@@ -562,7 +691,14 @@ static astNode *parseExpressionFromValue(astNode *firstValue) {
 }
 
 /** @brief Parses an expression from the current token. */
-static astNode *parseExpression(void) { return parseExpressionFromValue(NULL); }
+static astNode *parseExpression(void) {
+    return parseExpressionWithStops((ExpressionStops){0});
+}
+
+/** @brief Parses an expression with contextual terminators. */
+static astNode *parseExpressionWithStops(ExpressionStops stops) {
+    return parseExpressionFromValue(NULL, stops);
+}
 
 /** @brief Parses an indented block. @param parentIndent Indent of its header.
  */
@@ -571,9 +707,10 @@ static astNode *parseBlock(size_t parentIndent);
 /**
  * @brief Parses val or var.
  * @param isConstant True for val, false for var.
+ * @param stops Tokens that may end the initializer.
  * @return Variable AST, or NULL on error.
  */
-static astNode *parseVarDef(bool isConstant) {
+static astNode *parseVarDef(bool isConstant, ExpressionStops stops) {
     if (!advance()) {
         return NULL;
     }
@@ -601,7 +738,7 @@ static astNode *parseVarDef(bool isConstant) {
         return NULL;
     }
 
-    astNode *value = parseExpression();
+    astNode *value = parseExpressionWithStops(stops);
     if (value == NULL) {
         free(name);
         return NULL;
@@ -615,17 +752,18 @@ static astNode *parseVarDef(bool isConstant) {
 }
 
 /** @brief Parses a return statement. @return Return AST, or NULL on error. */
-static astNode *parseReturn(void) {
+static astNode *parseReturn(ExpressionStops stops) {
     if (!advance()) {
         return NULL;
     }
     /** return without a value is allowed for Unit functions */
     if (currentToken.type == TOKEN_NEWLINE ||
         currentToken.type == TOKEN_SEMICOLON ||
-        currentToken.type == TOKEN_EOF) {
+        currentToken.type == TOKEN_EOF ||
+        (stops.stopAtElse && currentToken.type == TOKEN_KW_ELSE)) {
         return createReturnNode(NULL);
     }
-    astNode *value = parseExpression();
+    astNode *value = parseExpressionWithStops(stops);
     if (value == NULL) {
         return NULL;
     }
@@ -633,35 +771,75 @@ static astNode *parseReturn(void) {
 }
 
 /**
- * @brief Parses an if statement and its branches.
- * @param indent Indent of the if line.
- * @return If AST, or NULL on error.
+ * @brief Parses an indented block or a single-line body.
+ * @param indent Indent of the enclosing header.
+ * @param isExpression True when the body must be a value expression.
+ * @param stops Additional expression terminators for inline bodies.
+ * @return Body as AST_BLOCK, or NULL on error.
  */
-static astNode *parseIf(size_t indent) {
-    if (!match(TOKEN_KW_IF, "expected 'if'")) {
-        return NULL;
+static astNode *parseBody(size_t indent, bool isExpression,
+                          ExpressionStops stops) {
+    if (currentToken.type == TOKEN_NEWLINE) {
+        if (!advance())
+            return NULL;
+        return parseBlock(indent);
     }
 
-    astNode *condition = parseExpression();
-    if (condition == NULL) {
+    /** single-line body is represented by a block of one statement */
+    astNode *statement = isExpression ? parseExpressionWithStops(stops)
+                                      : parseStatement(indent, stops);
+    if (statement == NULL)
+        return NULL;
+
+    astNode *body = createBlockNode();
+    if (addStatementToBlock(body, statement) != 0) {
+        freeAst(statement);
+        freeAst(body);
         return NULL;
     }
-    if (!match(TOKEN_KW_THEN, "expected 'then'") ||
-        !match(TOKEN_NEWLINE, "expected newline after 'then'")) {
+    return body;
+}
+
+/**
+ * @brief Parses an if statement or an if-expression.
+ * @param indent Indent of the containing logical line.
+ * @param isExpression True when the if must have an else branch.
+ * @param stops Terminators inherited from an outer expression.
+ * @return If AST, or NULL on error.
+ */
+static astNode *parseIf(size_t indent, bool isExpression,
+                        ExpressionStops stops) {
+    if (!match(TOKEN_KW_IF, "expected 'if'"))
+        return NULL;
+
+    astNode *condition = parseExpression();
+    if (condition == NULL)
+        return NULL;
+
+    if (!match(TOKEN_KW_THEN, "expected 'then'")) {
         freeAst(condition);
         return NULL;
     }
 
-    astNode *thenBlock = parseBlock(indent);
+    /** the first branch ends at its matching else */
+    ExpressionStops thenStops = stops;
+    thenStops.stopAtElse = true;
+    astNode *thenBlock = parseBody(indent, isExpression, thenStops);
     if (thenBlock == NULL) {
         freeAst(condition);
         return NULL;
     }
 
+    /** after an inline body, else may start the next logical line */
+    if (currentToken.type == TOKEN_NEWLINE && !advance()) {
+        freeAst(condition);
+        freeAst(thenBlock);
+        return NULL;
+    }
+
     astNode *elseBlock = NULL;
-    /** else must align with if */
-    if (currentToken.type == TOKEN_KW_ELSE && currentToken.startsLogicalLine &&
-        currentToken.indent == indent) {
+    if (currentToken.type == TOKEN_KW_ELSE &&
+        (!currentToken.startsLogicalLine || currentToken.indent == indent)) {
         if (!advance()) {
             freeAst(condition);
             freeAst(thenBlock);
@@ -670,19 +848,24 @@ static astNode *parseIf(size_t indent) {
 
         if (currentToken.type == TOKEN_KW_IF) {
             /** else if is stored as an if inside the else block */
-            astNode *nested = parseIf(indent);
+            astNode *nested = parseIf(indent, isExpression, stops);
             if (nested != NULL) {
                 elseBlock = createBlockNode();
                 addStatementToBlock(elseBlock, nested);
             }
-        } else if (match(TOKEN_NEWLINE, "expected newline after 'else'")) {
-            elseBlock = parseBlock(indent);
+        } else {
+            elseBlock = parseBody(indent, isExpression, stops);
         }
         if (elseBlock == NULL) {
             freeAst(condition);
             freeAst(thenBlock);
             return NULL;
         }
+    } else if (isExpression) {
+        syntaxError("if-expression requires 'else'");
+        freeAst(condition);
+        freeAst(thenBlock);
+        return NULL;
     }
 
     astNode *node = createIfNode(condition, thenBlock, elseBlock);
@@ -695,28 +878,25 @@ static astNode *parseIf(size_t indent) {
 }
 
 /**
- * @brief Parses a while loop.
+ * @brief Parses a while loop with an indented or single-line body.
  * @param indent Indent of the while line.
+ * @param stops Terminators inherited from an enclosing inline body.
  * @return While AST, or NULL on error.
  */
-static astNode *parseWhile(size_t indent) {
-    if (!match(TOKEN_KW_WHILE, "expected 'while'")) {
+static astNode *parseWhile(size_t indent, ExpressionStops stops) {
+    if (!match(TOKEN_KW_WHILE, "expected 'while'"))
         return NULL;
-    }
 
     astNode *condition = parseExpression();
-    if (condition == NULL) {
+    if (condition == NULL)
         return NULL;
-    }
 
-    if (!match(TOKEN_KW_DO, "expected 'do'") ||
-        !match(TOKEN_NEWLINE, "expected newline after 'do'")) {
+    if (!match(TOKEN_KW_DO, "expected 'do'")) {
         freeAst(condition);
         return NULL;
     }
 
-    /** body must be indented */
-    astNode *body = parseBlock(indent);
+    astNode *body = parseBody(indent, false, stops);
     if (body == NULL) {
         freeAst(condition);
         return NULL;
@@ -731,22 +911,176 @@ static astNode *parseWhile(size_t indent) {
 }
 
 /**
+ * @brief Parses a range-based for loop with optional guards.
+ * @param indent Indent of the for line.
+ * @param stops Terminators inherited from an enclosing inline body.
+ * @return For AST, or NULL on error.
+ */
+static astNode *parseFor(size_t indent, ExpressionStops stops) {
+    if (!match(TOKEN_KW_FOR, "expected 'for'"))
+        return NULL;
+
+    /** generator and guards may be on their own logical lines */
+    bool multiline = currentToken.type == TOKEN_NEWLINE;
+    size_t generatorIndent = indent;
+    if (multiline) {
+        if (!advance())
+            return NULL;
+        if (!currentToken.startsLogicalLine || currentToken.indent <= indent) {
+            syntaxError("expected indented for generator");
+            return NULL;
+        }
+        generatorIndent = currentToken.indent;
+    }
+
+    if (currentToken.type != TOKEN_IDENTIFIER) {
+        syntaxError("expected for iterator");
+        return NULL;
+    }
+    char *name = copyName();
+    if (!advance() ||
+        !match(TOKEN_LEFT_ARROW, "expected '<-' after iterator")) {
+        free(name);
+        return NULL;
+    }
+
+    ExpressionStops startStops = {.stopAtRange = true};
+    astNode *start = parseExpressionWithStops(startStops);
+    if (start == NULL) {
+        free(name);
+        return NULL;
+    }
+
+    /** to includes the end, until excludes it */
+    bool inclusive = isIdentifierWord("to");
+    if (!inclusive && !isIdentifierWord("until")) {
+        syntaxError("expected 'to' or 'until' in for range");
+        free(name);
+        freeAst(start);
+        return NULL;
+    }
+    if (!advance()) {
+        free(name);
+        freeAst(start);
+        return NULL;
+    }
+
+    ExpressionStops endStops = {.stopAtBy = true, .stopAtGuard = true};
+    astNode *end = parseExpressionWithStops(endStops);
+    if (end == NULL) {
+        free(name);
+        freeAst(start);
+        return NULL;
+    }
+
+    astNode *step = NULL;
+    if (isIdentifierWord("by")) {
+        if (!inclusive) {
+            syntaxError("'by' requires an inclusive 'to' range");
+            free(name);
+            freeAst(start);
+            freeAst(end);
+            return NULL;
+        }
+        if (advance()) {
+            ExpressionStops stepStops = {.stopAtGuard = true};
+            step = parseExpressionWithStops(stepStops);
+        }
+        if (step == NULL) {
+            free(name);
+            freeAst(start);
+            freeAst(end);
+            return NULL;
+        }
+    }
+
+    /** create the node before guards so it owns every parsed value */
+    astNode *emptyBody = createBlockNode();
+    astNode *forNode =
+        createForNode(name, start, end, inclusive, step, emptyBody);
+    if (forNode == NULL) {
+        freeAst(emptyBody);
+        free(name);
+        freeAst(start);
+        freeAst(end);
+        freeAst(step);
+        return NULL;
+    }
+
+    if (multiline) {
+        if (currentToken.type != TOKEN_NEWLINE || !advance()) {
+            syntaxError("expected newline after for generator");
+            freeAst(forNode);
+            return NULL;
+        }
+    }
+
+    while (currentToken.type == TOKEN_KW_IF &&
+           (!multiline || (currentToken.startsLogicalLine &&
+                           currentToken.indent == generatorIndent))) {
+        if (!advance()) {
+            freeAst(forNode);
+            return NULL;
+        }
+        ExpressionStops guardStops = {.stopAtGuard = true};
+        astNode *guard = parseExpressionWithStops(guardStops);
+        if (guard == NULL) {
+            freeAst(forNode);
+            return NULL;
+        }
+        addGuardToFor(forNode, guard);
+
+        if (multiline) {
+            if (currentToken.type != TOKEN_NEWLINE || !advance()) {
+                syntaxError("expected newline after for guard");
+                freeAst(forNode);
+                return NULL;
+            }
+        }
+    }
+
+    if (currentToken.type != TOKEN_KW_DO ||
+        (multiline &&
+         (!currentToken.startsLogicalLine || currentToken.indent != indent))) {
+        syntaxError("expected 'do' aligned with 'for'");
+        freeAst(forNode);
+        return NULL;
+    }
+    if (!advance()) {
+        freeAst(forNode);
+        return NULL;
+    }
+
+    astNode *body = parseBody(indent, false, stops);
+    if (body == NULL) {
+        freeAst(forNode);
+        return NULL;
+    }
+    freeAst(forNode->data.forStmt.body);
+    forNode->data.forStmt.body = body;
+    return forNode;
+}
+
+/**
  * @brief Parses one statement.
  * @param indent Indent of its line.
+ * @param stops Expression terminators for an inline statement.
  * @return Statement AST, or NULL on error.
  */
-static astNode *parseStatement(size_t indent) {
+static astNode *parseStatement(size_t indent, ExpressionStops stops) {
     switch (currentToken.type) {
     case TOKEN_KW_VAL:
-        return parseVarDef(true);
+        return parseVarDef(true, stops);
     case TOKEN_KW_VAR:
-        return parseVarDef(false);
+        return parseVarDef(false, stops);
     case TOKEN_KW_RETURN:
-        return parseReturn();
+        return parseReturn(stops);
     case TOKEN_KW_IF:
-        return parseIf(indent);
+        return parseIf(indent, false, stops);
     case TOKEN_KW_WHILE:
-        return parseWhile(indent);
+        return parseWhile(indent, stops);
+    case TOKEN_KW_FOR:
+        return parseFor(indent, stops);
     case TOKEN_IDENTIFIER: {
         /** check if name starts an assignment or expression */
         char *name = copyName();
@@ -759,7 +1093,7 @@ static astNode *parseStatement(size_t indent) {
                 free(name);
                 return NULL;
             }
-            astNode *value = parseExpression();
+            astNode *value = parseExpressionWithStops(stops);
             if (value == NULL) {
                 free(name);
                 return NULL;
@@ -772,14 +1106,13 @@ static astNode *parseStatement(size_t indent) {
             return node;
         }
         astNode *first = parseIdentifierValue(name);
-        if (first == NULL) {
+        if (first == NULL)
             return NULL;
-        }
-        return parseExpressionFromValue(first);
+        return parseExpressionFromValue(first, stops);
     }
     default:
         /** a plain expression can also be a statement */
-        return parseExpression();
+        return parseExpressionWithStops(stops);
     }
 }
 
@@ -813,14 +1146,24 @@ static astNode *parseBlock(size_t parentIndent) {
             break;
         }
 
-        astNode *statement = parseStatement(indent);
+        /** a logical line cannot begin with an operator */
+        if (currentToken.startsLogicalLine &&
+            isOperatorToken(currentToken.type)) {
+            syntaxError("logical line cannot start with operator");
+            break;
+        }
+
+        astNode *statement = parseStatement(indent, (ExpressionStops){0});
         if (statement == NULL) {
             break;
         }
         addStatementToBlock(block, statement);
 
-        /** if/while already parsed their blocks */
-        if (statement->type == AST_IF || statement->type == AST_WHILE) {
+        /** completed control blocks already point to the next statement */
+        if ((statement->type == AST_IF || statement->type == AST_WHILE ||
+             statement->type == AST_FOR) &&
+            currentToken.type != TOKEN_NEWLINE &&
+            currentToken.type != TOKEN_SEMICOLON) {
             afterSemicolon = false;
             continue;
         }
@@ -942,7 +1285,7 @@ static astNode *parseFunctionDef(bool isMain) {
         return NULL;
     }
 
-    /** newline -> block, otherwise a single expression */
+    /** parse a block or a single expression as the function body */
     bool isBlock = currentToken.type == TOKEN_NEWLINE;
     astNode *body = NULL;
     if (isBlock) {
@@ -975,6 +1318,19 @@ static astNode *parseFunctionDef(bool isMain) {
         }
     }
 
+    /** wrap single-line expressions in a block */
+    if (!isBlock) {
+        astNode *block = createBlockNode();
+        if (addStatementToBlock(block, body) != 0) {
+            freeAst(block);
+            freeAst(body);
+            freeParameters(params, paramCount);
+            free(name);
+            return NULL;
+        }
+        body = block;
+    }
+
     /** build function AST */
     astNode *function =
         createFuncDefNode(name, isMain, params, paramCount, body);
@@ -982,7 +1338,7 @@ static astNode *parseFunctionDef(bool isMain) {
         freeAst(body);
         freeParameters(params, paramCount);
         free(name);
-        ERRCODE = 99;
+        setErrCode(99);
         return NULL;
     }
 
@@ -997,10 +1353,11 @@ static astNode *parseFunctionDef(bool isMain) {
 astNode *parse(void) {
     /** initialize lexer */
     currentToken = (Token){0};
+    currentLineIndent = 0;
     lexer = lexerCreate(stdin);
     if (lexer == NULL) {
         fprintf(stderr, "Internal error: could not create lexer\n");
-        ERRCODE = 99;
+        setErrCode(99);
         return NULL;
     }
     astNode *root = NULL;
