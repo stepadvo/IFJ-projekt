@@ -16,12 +16,7 @@ int main(int argc, char *argv[]) {
     // TODO call parser
 
     if (ERRCODE != EXIT_SUCCESS) {
-        fprintf(stderr, "\
-==================================\n\
- Compilation ended unsuccesfully. \n\
-         output not valid         \n\
-==================================\n\
-");
+        fprintf(stderr, "Compilation terminated\n");
     }
     return ERRCODE;
 }
