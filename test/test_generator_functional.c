@@ -18,6 +18,14 @@ void testn(astNode **root) {
 
 void test1(astNode **root) {
     astNode *node = *root;
+    // test getting a long name
+    // the unique id will be single digit
+    char longName[IFJ_GEN_MAX_ID_LEN];
+    for (size_t i = 0; i < IFJ_GEN_MAX_ID_LEN - strlen("LF@$1") - 1; i++) {
+        longName[i] = 'm';
+    }
+    longName[IFJ_GEN_MAX_ID_LEN - strlen("LF@$1") - 1] = '\0';
+
     // prepare the ast
     /*
      *          func current(Unit)->Unit
@@ -39,6 +47,9 @@ void test1(astNode **root) {
     addArgumentToCall(call, createIdentifierNode("var1"));
     addStatementToBlock(body, call);
     call->data.funcCall.argIfAny = INT;
+    // test creating a character with a very long name
+    addStatementToBlock(body, createVarDefNode(longName, true, INT,
+                                               createIdentifierNode("var1")));
 
     // prepare the symtable
     symTableInit();
@@ -49,7 +60,7 @@ void test1(astNode **root) {
     symTableActivateFun("current");
     beginBlock();
     symTableInsertVar("var1", INT, false);
-    symTableFindVar("var1", NULL);
+    symTableInsertVar(longName, INT, false);
 
     // generate the ast and output the result
     codeGenState *state = codeGenInit();

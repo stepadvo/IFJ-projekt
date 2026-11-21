@@ -453,32 +453,51 @@ void codeGenRemoveBuf(codeGenState *state, codeGenBufNode *buffer) {
 
 int codeGenInsertTxt(const char *txt, codeGenBufNode *buffer) {
     size_t txtLen = strlen(txt);
+    size_t inserted = 0;
     bufSection *potentialDest = buffer->lastSection;
+    bufSection *next;
 
-    if (txtLen + potentialDest->size >= IFJ_GEN_BUF_SIZE - 1) {
+    while (txtLen - inserted + potentialDest->size >= IFJ_GEN_BUF_SIZE - 1) {
         // the last section's capacity is not sufficient
-        potentialDest = malloc(sizeof(bufSection));
-        if (!potentialDest) {
-            logErr(ERR_INTERNAL, LOGERR_NO_POS, LOGERR_NO_POS, LOGERR_NO_DETMSG);
+        next = malloc(sizeof(bufSection));
+        if (!next) {
+            logErr(ERR_INTERNAL, LOGERR_NO_POS, LOGERR_NO_POS,
+                   LOGERR_NO_DETMSG);
             return -1;
         }
 
-        potentialDest->next = NULL;
-        potentialDest->size = 0;
+        next->next = NULL;
+        next->size = 0;
 
         // append new section to the end
-        buffer->lastSection->next = potentialDest;
-        buffer->lastSection = potentialDest;
-    }
-    // else potentialDest stays as the last section
+        buffer->lastSection->next = next;
+        buffer->lastSection = next;
 
-    // copy the text into the destination buffer
-    // dest - ptr to the first unused character in the ->data (null character)
-    // len - copy the text and the null character
-    memcpy(&(potentialDest->data[potentialDest->size]), txt, txtLen + 1);
+        // insert what fits into the last not full section
+        size_t toInsert = IFJ_GEN_BUF_SIZE - 1 - potentialDest->size;
+
+        // copy the text into the destination buffer
+        // dest - ptr to the first unused character in the ->data (null
+        // character) src - ptr to the first not yet inserted char of txt len -
+        // copy the text and the null character
+        memcpy(&(potentialDest->data[potentialDest->size]), &txt[inserted],
+               toInsert);
+        // insert terminating character at the end of buffer
+        potentialDest->data[IFJ_GEN_BUF_SIZE - 1] = '\0';
+
+        potentialDest->size = IFJ_GEN_BUF_SIZE - 1; // set at maximum size
+        inserted += toInsert;
+
+        // move to next section
+        potentialDest = next;
+    }
+    // potentialDest stays as the last section
+
+    memcpy(&(potentialDest->data[potentialDest->size]), &txt[inserted],
+           txtLen - inserted + 1);
 
     // update the size
-    potentialDest->size += txtLen;
+    potentialDest->size += txtLen - inserted;
     buffer->totalSize += txtLen;
     return 0;
 }
