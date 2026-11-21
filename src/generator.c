@@ -277,14 +277,14 @@ int codeGenFunction(codeGenState *state, astNode *funRoot) {
     outBufNode *outBuf = malloc(sizeof(outBufNode));
 
     if (!outBuf) {
-        setErrCode(99);
+        logErr(ERR_INTERNAL, LOGERR_NO_POS, LOGERR_NO_POS, LOGERR_NO_DETMSG);
         return -1;
     }
 
     char *outBufData = malloc(totalLen + 1);
 
     if (!outBufData) {
-        setErrCode(99);
+        logErr(ERR_INTERNAL, LOGERR_NO_POS, LOGERR_NO_POS, LOGERR_NO_DETMSG);
         free(outBuf);
         return -1;
     }
@@ -387,14 +387,14 @@ void codeGenDiscard(codeGenState *state) {
 codeGenBufNode *codeGenCreateAndInsertBuf(codeGenState *state) {
     codeGenBufNode *tempBufP = malloc(sizeof(codeGenBufNode));
     if (!tempBufP) {
-        setErrCode(99);
+        logErr(ERR_INTERNAL, LOGERR_NO_POS, LOGERR_NO_POS, LOGERR_NO_DETMSG);
         return NULL;
     }
 
     bufSection *tempSectionP = malloc(sizeof(bufSection));
     if (!tempSectionP) {
         free(tempBufP);
-        setErrCode(99);
+        logErr(ERR_INTERNAL, LOGERR_NO_POS, LOGERR_NO_POS, LOGERR_NO_DETMSG);
         return NULL;
     }
 
@@ -459,7 +459,7 @@ int codeGenInsertTxt(const char *txt, codeGenBufNode *buffer) {
         // the last section's capacity is not sufficient
         potentialDest = malloc(sizeof(bufSection));
         if (!potentialDest) {
-            setErrCode(99);
+            logErr(ERR_INTERNAL, LOGERR_NO_POS, LOGERR_NO_POS, LOGERR_NO_DETMSG);
             return -1;
         }
 
