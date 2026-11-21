@@ -142,7 +142,8 @@ int symTableInsertFun(const char *id, varType retType, int paramCount,
 
         if (!newArr) {
             // memory allocation err
-            setErrCode(99);
+            logErr(ERR_INTERNAL, LOGERR_NO_POS, LOGERR_NO_POS,
+                   LOGERR_NO_DETMSG);
             // remove the function from the tree
             BSTRemove(gFunctionTable.tree, id, NULL);
             return -1;
@@ -413,7 +414,7 @@ int locSymTableInit(vSymTable *table, int paramCount, paramData params[]) {
     // initialize the 0-th block (used for parameters)
     varDataPriv *paramArr = malloc(sizeof(varDataPriv) * paramCount);
     if (!paramArr) {
-        setErrCode(99);
+        logErr(ERR_INTERNAL, LOGERR_NO_POS, LOGERR_NO_POS, LOGERR_NO_DETMSG);
         return -1;
     }
 
@@ -491,7 +492,8 @@ int locTableInsertVar(vSymTable *locTable, varDataPriv data) {
         }
 
         if (!newArr) {
-            setErrCode(99);
+            logErr(ERR_INTERNAL, LOGERR_NO_POS, LOGERR_NO_POS,
+                   LOGERR_NO_DETMSG);
             return -1;
         }
 
