@@ -208,6 +208,17 @@ int codeGenBlock(codeGenState *state, astNode *blockRoot, bool leaveVal) {
     }
     buffer->leftVal = leaveVal;
 
+    // if the block if a for loop body save iterator's uqId
+    astNode *parent = blockRoot->data.block.parentIfForBody;
+    if (parent) {
+        varData iter = symTableFindVar(parent->data.forStmt.iteratorName,
+                                       &buffer->iteratorUqId);
+        GEN_CHECK_PRINT(iter.id != NULL, -1,
+                        "While generating for loop body: the iterator not "
+                        "fount in the symbol table\n");
+        (void)iter;
+    }
+
     // generate all the statements in the block into the created buffer
     IFJ_GEN_TRY(codeGenStatementArr(blockRoot->data.block.statements,
                                     blockRoot->data.block.count, buffer, state,
@@ -403,6 +414,10 @@ codeGenBufNode *codeGenCreateAndInsertBuf(codeGenState *state) {
                           .lastSection = tempSectionP,
                           .totalSize = 0,
                           .labelNum = 0,
+                          .iteratorUqId = -1,
+                          .guardGen = {.generatingForGuard = false,
+                                       .guardIteratorName = NULL,
+                                       .guardIteratorUqId = -1},
                           .nextBuf = NULL,
                           .prevBuf = state->lastBuf};
     memcpy(tempBufP, &buf, sizeof(codeGenBufNode));
@@ -633,7 +648,7 @@ int codeGenStatement(astNode *node, codeGenBufNode *buffer, bool leaveVal,
 int codeGenStmtVarDef(astNode *varDef, codeGenBufNode *buffer,
                       codeGenState *state) {
     // get the name in IFJcode26
-    const char *name = codeGenGetVarName(varDef->data.varDef.name);
+    const char *name = codeGenGetVarName(buffer, varDef->data.varDef.name);
     GEN_CHECK(name != NULL, -1);
 
     const char overhead[] = "DEFVAR %s\n"
@@ -657,7 +672,7 @@ int codeGenStmtVarDef(astNode *varDef, codeGenBufNode *buffer,
 int codeGenStmtAssign(astNode *assign, codeGenBufNode *buffer,
                       codeGenState *state) {
     // get the name in IFJcode26
-    const char *name = codeGenGetVarName(assign->data.assign.name);
+    const char *name = codeGenGetVarName(buffer, assign->data.assign.name);
     GEN_CHECK(name != NULL, -1);
 
     const char overhead[] = "POPS %s\n";
@@ -787,12 +802,16 @@ int codeGenStmtFor(astNode *forLoop, codeGenBufNode *buffer,
     const char *uqId = codeGenGetLabelId(buffer);
     size_t uqIdLen = strlen(uqId);
 
-    // get the name of the iterator (will have the depth of the body block)
-    int blockDepth = symTableBlockDepth() + 1;
+    // get the name of the iterator (its unique id should be saved in the child
+    // block)
     char iterName[IFJ_GEN_MAX_ID_LEN];
-    size_t iterNameLen =
-        sprintf(iterName, "DEFVAR LF@%s$%i", forLoop->data.forStmt.iteratorName,
-                blockDepth);
+    GEN_CHECK_PRINT(forLoop->data.forStmt.body->type == AST_BLOCK, -1,
+                    "The body of a for loop isn't a block\n");
+    int iterUqId =
+        ((codeGenBufNode *)forLoop->data.forStmt.body->data.block.bufferPtr)
+            ->iteratorUqId;
+    size_t iterNameLen = sprintf(iterName, "LF@%s$%i",
+                                 forLoop->data.forStmt.iteratorName, iterUqId);
 
     // get and save the header
     /*
@@ -809,11 +828,16 @@ int codeGenStmtFor(astNode *forLoop, codeGenBufNode *buffer,
                           "POPS %s_END_V\n"
                           "DEFVAR %s\n"
                           "POPS %s\n"
+                          // check if step isn't 0
+                          "PUSHS %s_STEP_V\n"
+                          "PUSHS int@0\n"
+                          "JUMPIFNEQS %s_START_L\n"
+                          "EXIT int@40\n"
                           "LABEL %s_START_L\n";
-    size_t headerLen = 2 * iterNameLen + 4 * uqIdLen + strlen(header);
+    size_t headerLen = 2 * iterNameLen + 7 * uqIdLen + strlen(header);
     char headerBuf[headerLen + 1];
-    sprintf(headerBuf, header, iterName, iterName, uqId, uqId, uqId, uqId,
-            uqId);
+    sprintf(headerBuf, header, uqId, uqId, uqId, uqId, iterName, iterName, uqId,
+            uqId, uqId);
 
     // get and save the guard check
     const char guardCheck[] = "PUSHS bool@true\n"
@@ -825,8 +849,8 @@ int codeGenStmtFor(astNode *forLoop, codeGenBufNode *buffer,
     // get and save the footer
     const char footerEndInclusive[] = "LABEL %s_ITER_L\n"
                                       "ADD %s %s %s_STEP_V\n"
-                                      "PUSHS %s\nPUSHS "
-                                      "%s_END_V\n"
+                                      "PUSHS %s\n"
+                                      "PUSHS %s_END_V\n"
                                       "LTS\n"
                                       "PUSHS bool@true\n"
                                       "JUMPEQ %s_START_L\n";
@@ -869,6 +893,10 @@ int codeGenStmtFor(astNode *forLoop, codeGenBufNode *buffer,
     // insert the header
     IFJ_GEN_TRY(codeGenInsertTxt(headerBuf, buffer), -1);
 
+    // prepare the buffer for generating the guards
+    buffer->guardGen.generatingForGuard = true;
+    buffer->guardGen.guardIteratorName = forLoop->data.forStmt.iteratorName;
+    buffer->guardGen.guardIteratorUqId = iterUqId;
     // insert all the guards
     for (size_t i = 0; i < forLoop->data.forStmt.guardCount; i++) {
         // leave the evaluation of the boolean value on stack
@@ -877,6 +905,8 @@ int codeGenStmtFor(astNode *forLoop, codeGenBufNode *buffer,
                     -1);
         IFJ_GEN_TRY(codeGenInsertTxt(guardCheckBuf, buffer), -1);
     }
+    // clean up the buffer after generating the guards
+    buffer->guardGen.generatingForGuard = false;
 
     // generate the body of the for loop
     IFJ_GEN_TRY(
@@ -1133,7 +1163,7 @@ int codeGenStmtStringLit(const char *str, size_t lenght,
 
 int codeGenStmtIdentif(astNode *identif, codeGenBufNode *buffer) {
     // translate the name to IFJcode26
-    const char *name = codeGenGetVarName(identif->data.identifier.name);
+    const char *name = codeGenGetVarName(buffer, identif->data.identifier.name);
     GEN_CHECK(name != NULL, -1);
 
     // assemble the final string and insert to buffer
@@ -1281,8 +1311,15 @@ int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer,
     return 1;
 }
 
-const char *codeGenGetVarName(const char *id) {
+const char *codeGenGetVarName(codeGenBufNode *buffer, const char *id) {
     static char nameBuf[IFJ_GEN_MAX_ID_LEN];
+
+    // check if we are generating a for loop guard and need the iterator name
+    if (buffer->guardGen.generatingForGuard &&
+        strcmp(id, buffer->guardGen.guardIteratorName) == 0) {
+        sprintf(nameBuf, "LF@%s$%i", id, buffer->guardGen.guardIteratorUqId);
+        return nameBuf;
+    }
 
     static int uniqueId;
     // find the name in symTable

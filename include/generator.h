@@ -38,6 +38,13 @@ typedef struct bufSection {
     struct bufSection *next; /** ptr to the next node */
 } bufSection;
 
+/** @brief info needed only when generating a for loop guard*/
+typedef struct {
+    bool generatingForGuard;
+    char *guardIteratorName;
+    int guardIteratorUqId;
+} codeGenGuardInfo;
+
 /** @brief buffer for keeping the generated code blocks */
 typedef struct codeGenBufNode {
     /** linked list of sections */
@@ -46,10 +53,15 @@ typedef struct codeGenBufNode {
     int totalSize; /** redundant data. Useful for getting the total size faster
                     */
     int labelNum;  /** the number given to a statement needing labels so the
-                      label names are identical (works if one buffer is analogous
-                      to one source code block) */
+                      label names are unique(works if one buffer is analogous to
+                      one source code block) */
 
-    bool leftVal; /** set to true if the block left value on stack */
+    bool leftVal;     /** set to true if the block left value on stack */
+    int iteratorUqId; /** if the block is a body of a for loop, should be set as
+                         the unique id of the iterator (the iterator is only
+                         accessable in the symbol table in the child block, not
+                         in the block with the for loop header) */
+    codeGenGuardInfo guardGen;
 
     struct codeGenBufNode *nextBuf;
     struct codeGenBufNode *prevBuf;
@@ -447,6 +459,7 @@ int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer,
 /**
  * @brief assembles the name of a variable in IFJcode26
  *
+ * @param buffer a non NULL ptr to the buffer we are generating in
  * @param id the name in IFJ26 to be translated
  *
  * @return ptr to the name in IFJcode26
@@ -459,7 +472,7 @@ int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer,
  *
  * (the variable name is redundant, but simplifies debugging)
  */
-const char *codeGenGetVarName(const char *id);
+const char *codeGenGetVarName(codeGenBufNode *buffer, const char *id);
 
 /**
  * @brief assembles a unique label name

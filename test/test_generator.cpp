@@ -146,6 +146,10 @@ TEST_F(CodeGeneratorTest, ErrorHandlingNulls) {
  * @brief Tests utility helpers like variable naming and label generation.
  */
 TEST_F(CodeGeneratorTest, UtilityFunctions) {
+    codeGenState *state = codeGenInit();
+    ASSERT_NE(state, nullptr);
+    codeGenBufNode *buf = codeGenCreateAndInsertBuf(state);
+    ASSERT_NE(buf, nullptr);
     // Test variable name assembly
     if (symTableInit() == -1) {
         return;
@@ -154,13 +158,11 @@ TEST_F(CodeGeneratorTest, UtilityFunctions) {
     symTableActivateFun("hello");
     beginBlock();
     symTableInsertVar("counter", INT, false);
-    const char *varName = codeGenGetVarName("counter");
+    const char *varName = codeGenGetVarName(buf, "counter");
     ASSERT_NE(varName, nullptr);
     EXPECT_EQ(strncmp(varName, "LF@counter", 10), 0);
 
     // Test label ID generation
-    codeGenState *state = codeGenInit();
-    codeGenBufNode *buf = codeGenCreateAndInsertBuf(state);
 
     const char *labelId = codeGenGetLabelId(buf);
     ASSERT_NE(labelId, nullptr);
