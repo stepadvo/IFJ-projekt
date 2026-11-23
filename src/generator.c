@@ -822,64 +822,87 @@ int codeGenStmtFor(astNode *forLoop, codeGenBufNode *buffer,
      *
      * so we pop them in the reverse order
      */
-    const char header[] = "DEFVAR %s_STEP_V\n"
-                          "POPS %s_STEP_V\n"
-                          "DEFVAR %s_END_V\n"
-                          "POPS %s_END_V\n"
-                          "DEFVAR %s\n"
-                          "POPS %s\n"
-                          // check if step isn't 0
-                          "PUSHS %s_STEP_V\n"
-                          "PUSHS int@0\n"
-                          "JUMPIFNEQS %s_START_L\n"
-                          "EXIT int@40\n"
-                          "LABEL %s_START_L\n";
-    size_t headerLen = 2 * iterNameLen + 7 * uqIdLen + strlen(header);
-    char headerBuf[headerLen + 1];
-    sprintf(headerBuf, header, uqId, uqId, uqId, uqId, iterName, iterName, uqId,
-            uqId, uqId);
+    const char headerp1[] = "DEFVAR LF@%s_STEP_V\n"
+                            "POPS LF@%s_STEP_V\n"
+                            "DEFVAR LF@%s_END_V\n"
+                            "POPS LF@%s_END_V\n"
+                            "DEFVAR %s\n"
+                            "POPS %s\n"
+                            // check if step isn't 0
+                            "PUSHS LF@%s_STEP_V\n"
+                            "PUSHS int@0\n"
+                            "JUMPIFNEQS %s_START_L\n"
+                            "EXIT int@40\n"
+                            "LABEL %s_START_L\n"
+                            // check whether the iterator is within bounds
+                            "PUSHS %s\n"
+                            "PUSHS LF@%s_END_V\n"
+                            // check whether the step is positive or negative
+                            "PUSHS LF@%s_STEP_V\n"
+                            "PUSHS int@0\n"
+                            "GTS\n"
+                            "PUSHS bool@true\n"
+                            "JUMPIFNEQS %s_STEP_CHECK_NEG_L\n";
+    size_t headerp1Len = 3 * iterNameLen + 10 * uqIdLen + strlen(headerp1);
+    char headerp1Buf[headerp1Len + 1];
+    sprintf(headerp1Buf, headerp1, uqId, uqId, uqId, uqId, iterName, iterName,
+            uqId, uqId, uqId, iterName, uqId, uqId, uqId);
+
+    const char headerp2[] = "JUMP %s_STEP_CHECK_END_L\n"
+                            "LABEL %s_STEP_CHECK_NEG_L\n";
+    size_t headerp2Len = 2 * uqIdLen + strlen(headerp2);
+    char headerp2Buf[headerp2Len + 1];
+    sprintf(headerp2Buf, headerp2, uqId, uqId);
+
+    const char headerp3[] = "LABEL %s_STEP_CHECK_END_L\n";
+    size_t headerp3Len = uqIdLen + strlen(headerp3);
+    char headerp3Buf[headerp3Len + 1];
+    sprintf(headerp3Buf, headerp3, uqId);
+
+    const char headerp4[] = "JUMPIFEQS %s_END_L\n";
+    size_t headerp4Len = uqIdLen + strlen(headerp4);
+    char headerp4Buf[headerp4Len + 1];
+    sprintf(headerp4Buf, headerp4, uqId);
+
+    // the check for step > 0 (inserted between header part 1 and 2)
+    char *stepCheckGT0 = "";
+    // the check for step < 0 (inserted between header part 2 and 3)
+    char *stepCheckLT0 = "";
+    // the boolean value the comparison is compared with (false acts as a
+    // negation of the checks) (inserted between header part 3 and 4)
+    char *stepCmp = "";
+    bool endInclusive = forLoop->data.forStmt.endInclusive;
+    if (endInclusive) {
+        // if step > 0 end the cycle if iter > end
+        stepCheckGT0 = "GTS\n";
+        // if step < 0 end the cycle if iter < end
+        stepCheckLT0 = "LTS\n";
+
+        stepCmp = "PUSHS bool@true\n";
+    } else {
+        // if step > 0 end the cycle if !( iter < end )
+        stepCheckGT0 = "LTS\n";
+        // if step < 0 end the cycle if !( iter > end )
+        stepCheckLT0 = "GTS\n";
+        stepCmp = "PUSHS bool@false\n";
+    }
 
     // get and save the guard check
     const char guardCheck[] = "PUSHS bool@true\n"
-                              "JUMPNEQS %s_ITER_L\n";
+                              "JUMPIFNEQS %s_ITER_L\n";
     size_t guardCheckLen = uqIdLen + strlen(guardCheck);
     char guardCheckBuf[guardCheckLen + 1];
     sprintf(guardCheckBuf, guardCheck, uqId);
 
     // get and save the footer
-    const char footerEndInclusive[] = "LABEL %s_ITER_L\n"
-                                      "ADD %s %s %s_STEP_V\n"
-                                      "PUSHS %s\n"
-                                      "PUSHS %s_END_V\n"
-                                      "LTS\n"
-                                      "PUSHS bool@true\n"
-                                      "JUMPEQ %s_START_L\n";
-    const char footerEndExclusive[] = "LABEL %s_ITER_L\n"
-                                      "ADD %s %s %s_STEP_V\n"
-                                      "PUSHS %s\n"
-                                      "PUSHS %s_END_V\n"
-                                      "LTS\n"
-                                      "PUSHS %s\n"
-                                      "PUSHS %s_END_V\n"
-                                      "EQS\n"
-                                      "ORS\n"
-                                      "PUSHS bool@true\n"
-                                      "JUMPEQ %s_START_L\n";
-
-    // set the footerLen as the bigger of the possible two (end exclusive)
-    size_t footerLen =
-        3 * iterNameLen + 4 * uqIdLen + strlen(footerEndExclusive);
-
-    bool endInclusive = forLoop->data.forStmt.endInclusive;
+    const char footer[] = "LABEL %s_ITER_L\n"
+                          "ADD %s %s LF@%s_STEP_V\n"
+                          "JUMP %s_START_L\n"
+                          "LABEL %s_END_L\n";
+    size_t footerLen = 2 * iterNameLen + 4 * uqIdLen + strlen(footer);
     char footerBuf[footerLen + 1];
+    sprintf(footerBuf, footer, uqId, iterName, iterName, uqId, uqId, uqId);
 
-    if (endInclusive) {
-        sprintf(footerBuf, footerEndInclusive, uqId, iterName, iterName, uqId,
-                iterName, uqId, uqId);
-    } else {
-        sprintf(footerBuf, footerEndExclusive, uqId, iterName, iterName, uqId,
-                iterName, uqId, iterName, uqId, uqId);
-    }
     // now we can release hold of the uqId
 
     // evaluate the start, end and step values and push them to stack
@@ -890,8 +913,14 @@ int codeGenStmtFor(astNode *forLoop, codeGenBufNode *buffer,
     IFJ_GEN_TRY(
         codeGenStatement(forLoop->data.forStmt.step, buffer, true, state), -1);
 
-    // insert the header
-    IFJ_GEN_TRY(codeGenInsertTxt(headerBuf, buffer), -1);
+    // insert the header (all parts and the step checks and cmp inbetween)
+    IFJ_GEN_TRY(codeGenInsertTxt(headerp1Buf, buffer), -1);
+    IFJ_GEN_TRY(codeGenInsertTxt(stepCheckGT0, buffer), -1);
+    IFJ_GEN_TRY(codeGenInsertTxt(headerp2Buf, buffer), -1);
+    IFJ_GEN_TRY(codeGenInsertTxt(stepCheckLT0, buffer), -1);
+    IFJ_GEN_TRY(codeGenInsertTxt(headerp3Buf, buffer), -1);
+    IFJ_GEN_TRY(codeGenInsertTxt(stepCmp, buffer), -1);
+    IFJ_GEN_TRY(codeGenInsertTxt(headerp4Buf, buffer), -1);
 
     // prepare the buffer for generating the guards
     buffer->guardGen.generatingForGuard = true;

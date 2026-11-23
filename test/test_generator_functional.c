@@ -424,12 +424,58 @@ void test3(astNode **root) {
 
 void test4(astNode **root) {
     astNode *node = *root;
-    (void)node;
+    node = createProgramNode();
+
     // prepare the ast
+    Token literStart = {.type = TOKEN_INT_LITERAL, .attribute.intValue = 1112};
+    Token literEnd = {.type = TOKEN_INT_LITERAL, .attribute.intValue = 0};
+    Token literStep = {.type = TOKEN_INT_LITERAL, .attribute.intValue = -2};
+
+    // prepare the iterative function
+    astNode *body = createBlockNode();
+    astNode *fun = createFuncDefNode("main", true, NULL, 0, body);
+    fun->data.funcDef.explicitReturnType = INT;
+
+    addFunctionToProgram(node, fun);
+
+    astNode *forBody = createBlockNode();
+    addStatementToBlock(body,
+                        createForNode("i", createLiteralNode(&literStart),
+                                      createLiteralNode(&literEnd), true,
+                                      createLiteralNode(&literStep), forBody));
+
+    astNode *print1 = createFuncCallNode("print");
+    print1->data.funcCall.argIfAny = INT;
+    addArgumentToCall(print1, createIdentifierNode("i"));
+    addStatementToBlock(forBody, print1);
+
+    astNode *print2 = createFuncCallNode("print");
+    print2->data.funcCall.argIfAny = STRING;
+    Token strLit = {.type = TOKEN_STRING_LITERAL,
+                    .attribute.text.data = "\n",
+                    .attribute.text.length = 1};
+    addArgumentToCall(print2, createLiteralNode(&strLit));
+    addStatementToBlock(forBody, print2);
 
     // prepare the symtable
+    symTableInit();
+    symTableInsertFun("main", UNIT, 0, NULL);
+    symTableInsertFun("print", UNIT, 1,
+                      &((paramData){.id = "val", .dataType = ANY}));
 
     // generate the ast and output the result
+    codeGenState *state = codeGenInit();
+    symTableActivateFun("main");
+    beginBlock();
+    beginBlock();
+    symTableInsertVar("i", INT, false);
+    codeGenBlock(state, forBody, false);
+
+    endBlock();
+    codeGenBlock(state, body, false);
+
+    codeGenFunction(state, fun);
+    codeGenOutCode(state);
 }
 
 void test5(astNode **root) {
