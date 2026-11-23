@@ -220,6 +220,9 @@ struct astNode {
             /**< Used internally by the code generator. Safe to ignore for now.
              */
             void *bufferPtr;
+            /**< Used internally by the code generator. Set to not NULL only
+             * when the block is a body of for loop */
+            astNode *parentIfForBody;
         } block;
 
         /**
@@ -316,7 +319,7 @@ astNode *createProgramNode(void);
 
 /**
  * @brief Initializes a new block node.
- * @return A fresh AST_BLOCK node.
+ * @return A fresh AST_BLOCK node. (parentIfForBody will be NULL)
  */
 astNode *createBlockNode(void);
 
@@ -387,8 +390,10 @@ astNode *createWhileNode(astNode *condition, astNode *bodyBlock);
  * @param end The ending bound.
  * @param endInclusive True if 'to' is used, false for 'until'.
  * @param step The step expression. NULL defaults to a step of 1.
- * @param body The code body of the loop.
+ * @param body The code body of the loop (must be type AST_BLOCK).
  * @return A new AST_FOR node.
+ *
+ * will set the parentIfForBody of body to point to the created node
  */
 astNode *createForNode(char *iteratorName, astNode *start, astNode *end,
                        bool endInclusive, astNode *step, astNode *body);

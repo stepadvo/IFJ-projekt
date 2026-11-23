@@ -39,6 +39,7 @@ TEST(Ast, EmptyBlock) {
     EXPECT_EQ(n->type, AST_BLOCK);
     EXPECT_EQ(n->data.block.count, 0u);
     EXPECT_EQ(n->data.block.bufferPtr, nullptr);
+    EXPECT_EQ(n->data.block.parentIfForBody, nullptr);
     freeAst(n);
 }
 TEST(Ast, BlockAppendOrderAndCapacity) {
@@ -107,6 +108,7 @@ TEST(Ast, IfWithoutElse) {
     astNode *n = createIfNode(number(1), createBlockNode(), nullptr);
     ASSERT_NE(n, nullptr);
     EXPECT_EQ(n->data.ifStmt.elseBlock, nullptr);
+    EXPECT_EQ(n->data.ifStmt.thenBlock->data.block.parentIfForBody, nullptr);
     freeAst(n);
 }
 TEST(Ast, ForWithGuards) {
@@ -117,6 +119,7 @@ TEST(Ast, ForWithGuards) {
     EXPECT_TRUE(n->data.forStmt.endInclusive);
     EXPECT_EQ(addGuardToFor(n, number(1)), 0);
     EXPECT_EQ(n->data.forStmt.guardCount, 1u);
+    EXPECT_EQ(n->data.forStmt.body->data.block.parentIfForBody, n);
     freeAst(n);
 }
 TEST(Ast, FunctionCallArguments) {
