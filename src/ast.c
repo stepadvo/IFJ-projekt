@@ -70,6 +70,7 @@ astNode *createFuncDefNode(char *name, bool isMain, astFuncParam *params,
 astNode *createBlockNode(void) {
     astNode *node = newNode(AST_BLOCK);
     node->data.block.bufferNum = -1;
+    node->data.block.parentIfForBody = NULL;
     return node;
 }
 
@@ -147,6 +148,8 @@ astNode *createForNode(char *iteratorName, astNode *start, astNode *end,
     node->data.forStmt.endInclusive = endInclusive;
     node->data.forStmt.step = step;
     node->data.forStmt.body = body;
+
+    body->data.block.parentIfForBody = node;
     return node;
 }
 
