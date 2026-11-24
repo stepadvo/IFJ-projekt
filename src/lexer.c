@@ -450,16 +450,6 @@ static LexerStatus lexerReadNumber(Lexer *lexer, int firstCharacter,
         }
     }
 
-    status = lexerPeekChar(lexer, &character);
-    if (status != LEXER_OK) {
-        goto failure;
-    }
-
-    if (lexerIsDigit(character) || (character >= 'a' && character <= 'z') ||
-        (character >= 'A' && character <= 'Z') || character == '_') {
-        goto lexicalError;
-    }
-
     char *end;
     TokenAttribute attribute = {0};
     errno = 0;
