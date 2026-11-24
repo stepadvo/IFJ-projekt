@@ -177,6 +177,9 @@ struct astNode {
         struct {
             /**< The name of the loop iterator variable. */
             char *iteratorName;
+            /**< The unique id of the loop iterator variable (for generation).
+             */
+            int iteratorUqId;
             /**< The starting value of the range. */
             astNode *start;
             /**< The ending value of the range. */
@@ -247,6 +250,8 @@ struct astNode {
         struct {
             /**< The name of the new variable. */
             char *name;
+            /**< the unique id of the variable (for generation) */
+            int uniqueId;
             /**< True if declared with 'val' (immutable), false for 'var'. */
             bool isConstant;
             /**< The explicitly written type, or UNKNOWN if left for inference.

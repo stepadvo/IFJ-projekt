@@ -95,6 +95,7 @@ astNode *createVarDefNode(char *name, bool isConstant, varType explicitType,
     node->data.varDef.isConstant = isConstant;
     node->data.varDef.explicitType = explicitType;
     node->data.varDef.initializer = initializer;
+    node->data.varDef.uniqueId = -1;
     return node;
 }
 
@@ -143,6 +144,7 @@ astNode *createForNode(char *iteratorName, astNode *start, astNode *end,
 
     astNode *node = newNode(AST_FOR);
     node->data.forStmt.iteratorName = iteratorName;
+    node->data.forStmt.iteratorUqId = -1;
     node->data.forStmt.start = start;
     node->data.forStmt.end = end;
     node->data.forStmt.endInclusive = endInclusive;

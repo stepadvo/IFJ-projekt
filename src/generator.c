@@ -32,7 +32,7 @@
         if (!(cond))                                                           \
         return retFail
 #else
-    #define GEN_CHECK_PRINT(cond, str, ...) (void)0
+    #define GEN_CHECK_PRINT(cond, retFail, str, ...) (void)0
     #define GEN_CHECK(cond, retFail) (void)0
 #endif
 
@@ -58,16 +58,16 @@ codeGenState *codeGenInit() {
         // lentht(=not(strlen>index)) (GF@G3 = strlen(value))
         "STRLEN GF@G3 GF@G1\n"
         "GT GF@G3 GF@G3 GF@G2\n"
-        "JUMPIFNEQ ord$fail GF@G3 BOOL@true\n"
+        "JUMPIFNEQ ord$fail GF@G3 bool@true\n"
 
-        // get the character at index and push it to stack
-        "GETCHAR GF@G1 GF@G1 GF@G2\n"
+        // get the ascii value at index and push it to stack
+        "STRI2INT GF@G1 GF@G1 GF@G2\n"
         "PUSHS GF@G1\n"
         "RETURN\n"
 
         // on fail push -1 to stack
         "LABEL ord$fail\n"
-        "PUSHS INT@-1\n"
+        "PUSHS int@-1\n"
         "RETURN\n\n";
 
     // function subStr(value:String, start:Int, end:Int)->String
@@ -208,11 +208,12 @@ int codeGenBlock(codeGenState *state, astNode *blockRoot, bool leaveVal) {
     }
     buffer->leftVal = leaveVal;
 
-    // if the block if a for loop body save iterator's uqId
+    // if the block if a for loop body save iterator's uqId to the parent node
     astNode *parent = blockRoot->data.block.parentIfForBody;
     if (parent) {
-        varData iter = symTableFindVar(parent->data.forStmt.iteratorName,
-                                       &buffer->iteratorUqId);
+        varData iter = symTableFindVar(
+            parent->data.forStmt.iteratorName,
+            &blockRoot->data.block.parentIfForBody->data.forStmt.iteratorUqId);
         GEN_CHECK_PRINT(iter.id != NULL, -1,
                         "While generating for loop body: the iterator not "
                         "fount in the symbol table\n");
@@ -274,15 +275,27 @@ int codeGenFunction(codeGenState *state, astNode *funRoot) {
 
     // first get the size of the allocated chunk of memory
     // get the size of the function overhead
-    size_t totalLen = 1;
+    size_t totalLen = 0;
     totalLen += strlen(header) + strlen(footer) - 2 * 2 +
                 2 * strlen(funRoot->data.funcDef.name);
     for (size_t i = 0; i < funRoot->data.funcDef.paramCount; i++) {
         totalLen += strlen(singleParam) - 2 * 2 - 2 * 3 +
                     2 * strlen(funRoot->data.funcDef.params[i].name) + 2 * 10;
     }
+
+    // generate definition of all the local variables in the function to a new
+    // buffer
+    codeGenBufNode *funBuf = codeGenCreateAndInsertBuf(state);
+    if (!funBuf) {
+        return -1;
+    }
+    codeGenVariables(funRoot, funBuf);
+
+    // append the actual body to the new buffer
+    codeGenInsertBufToTxt(state, funBuf, bodyBuffer,
+                          funRoot->data.funcDef.body);
     // get the size of the body
-    totalLen += bodyBuffer->totalSize;
+    totalLen += funBuf->totalSize;
 
     // allocate a chunk of memory for the whole function and its output buffer
     outBufNode *outBuf = malloc(sizeof(outBufNode));
@@ -314,7 +327,7 @@ int codeGenFunction(codeGenState *state, astNode *funRoot) {
     }
 
     // insert the body and remove the used buffer
-    pos += codeGenOutputBuf(&outBufData[pos], bodyBuffer);
+    pos += codeGenOutputBuf(&outBufData[pos], funBuf);
 
     // generate the footer
     pos += sprintf(&outBufData[pos], footer, funRoot->data.funcDef.name);
@@ -414,7 +427,6 @@ codeGenBufNode *codeGenCreateAndInsertBuf(codeGenState *state) {
                           .lastSection = tempSectionP,
                           .totalSize = 0,
                           .labelNum = 0,
-                          .iteratorUqId = -1,
                           .guardGen = {.generatingForGuard = false,
                                        .guardIteratorName = NULL,
                                        .guardIteratorUqId = -1},
@@ -551,6 +563,62 @@ int codeGenOutputBuf(char *outBuf, codeGenBufNode *buffer) {
     return len;
 }
 
+int codeGenInsertVarDef(const char *name, int uqId, codeGenBufNode *buffer) {
+    if (!name || !buffer) {
+        return 0;
+    }
+    GEN_CHECK_PRINT(uqId != -1, -1,
+                    "Variable with name %s unique ID not set in the ast\n",
+                    name);
+    const char *instr = "DEFVAR LF@%s$%i\n";
+    char instrBuf[IFJ_GEN_MAX_ID_LEN];
+    sprintf(instrBuf, instr, name, uqId);
+    IFJ_GEN_TRY(codeGenInsertTxt(instrBuf, buffer), -1);
+    return 0;
+}
+
+int codeGenVariables(astNode *root, codeGenBufNode *buffer) {
+    if (!root || !buffer) {
+        return 0;
+    }
+
+    switch (root->type) {
+    case AST_FUNC_DEF:
+        IFJ_GEN_TRY(codeGenVariables(root->data.funcDef.body, buffer), -1);
+        break;
+    case AST_VAR_DEF:
+        IFJ_GEN_TRY(codeGenInsertVarDef(root->data.varDef.name,
+                                        root->data.varDef.uniqueId, buffer),
+                    -1);
+        break;
+    case AST_IF:
+        IFJ_GEN_TRY(codeGenVariables(root->data.ifStmt.thenBlock, buffer), -1);
+        IFJ_GEN_TRY(codeGenVariables(root->data.ifStmt.elseBlock, buffer), -1);
+        break;
+    case AST_WHILE:
+        IFJ_GEN_TRY(codeGenVariables(root->data.whileStmt.bodyBlock, buffer),
+                    -1);
+        break;
+    case AST_FOR:
+        IFJ_GEN_TRY(codeGenInsertVarDef(root->data.forStmt.iteratorName,
+                                        root->data.forStmt.iteratorUqId,
+                                        buffer),
+                    -1);
+        IFJ_GEN_TRY(codeGenVariables(root->data.forStmt.body, buffer), -1);
+        break;
+    case AST_BLOCK:
+        for (size_t i = 0; i < root->data.block.count; i++) {
+            IFJ_GEN_TRY(
+                codeGenVariables(root->data.block.statements[i], buffer), -1);
+        }
+        break;
+    default:
+        // if any other block we can return, there will be no further varDefs
+        break;
+    }
+    return 0;
+}
+
 int codeGenStatementArr(astNode **nodes, size_t count, codeGenBufNode *buffer,
                         codeGenState *state, bool leaveVal) {
 
@@ -648,16 +716,20 @@ int codeGenStatement(astNode *node, codeGenBufNode *buffer, bool leaveVal,
 int codeGenStmtVarDef(astNode *varDef, codeGenBufNode *buffer,
                       codeGenState *state) {
     // get the name in IFJcode26
-    const char *name = codeGenGetVarName(buffer, varDef->data.varDef.name);
+    int uqId;
+    const char *name =
+        codeGenGetVarName(buffer, varDef->data.varDef.name, &uqId);
     GEN_CHECK(name != NULL, -1);
 
-    const char overhead[] = "DEFVAR %s\n"
-                            "POPS %s\n";
+    // save the unique ID to the ast
+    varDef->data.varDef.uniqueId = uqId;
+
+    const char overhead[] = "POPS %s\n";
     size_t overheadLen = 2 * strlen(name) + strlen(overhead);
     // set the buffer lenght
     char buf[overheadLen + 1];
 
-    sprintf(buf, overhead, name, name);
+    sprintf(buf, overhead, name);
     // release hold of the name buffer and generate RHS (the initializing value
     // should be left on stack)
 
@@ -672,7 +744,8 @@ int codeGenStmtVarDef(astNode *varDef, codeGenBufNode *buffer,
 int codeGenStmtAssign(astNode *assign, codeGenBufNode *buffer,
                       codeGenState *state) {
     // get the name in IFJcode26
-    const char *name = codeGenGetVarName(buffer, assign->data.assign.name);
+    const char *name =
+        codeGenGetVarName(buffer, assign->data.assign.name, NULL);
     GEN_CHECK(name != NULL, -1);
 
     const char overhead[] = "POPS %s\n";
@@ -807,9 +880,7 @@ int codeGenStmtFor(astNode *forLoop, codeGenBufNode *buffer,
     char iterName[IFJ_GEN_MAX_ID_LEN];
     GEN_CHECK_PRINT(forLoop->data.forStmt.body->type == AST_BLOCK, -1,
                     "The body of a for loop isn't a block\n");
-    int iterUqId =
-        ((codeGenBufNode *)forLoop->data.forStmt.body->data.block.bufferPtr)
-            ->iteratorUqId;
+    int iterUqId = forLoop->data.forStmt.iteratorUqId;
     size_t iterNameLen = sprintf(iterName, "LF@%s$%i",
                                  forLoop->data.forStmt.iteratorName, iterUqId);
 
@@ -822,31 +893,32 @@ int codeGenStmtFor(astNode *forLoop, codeGenBufNode *buffer,
      *
      * so we pop them in the reverse order
      */
-    const char headerp1[] = "DEFVAR LF@%s_STEP_V\n"
-                            "POPS LF@%s_STEP_V\n"
-                            "DEFVAR LF@%s_END_V\n"
-                            "POPS LF@%s_END_V\n"
-                            "DEFVAR %s\n"
-                            "POPS %s\n"
-                            // check if step isn't 0
-                            "PUSHS LF@%s_STEP_V\n"
-                            "PUSHS int@0\n"
-                            "JUMPIFNEQS %s_START_L\n"
-                            "EXIT int@40\n"
-                            "LABEL %s_START_L\n"
-                            // check whether the iterator is within bounds
-                            "PUSHS %s\n"
-                            "PUSHS LF@%s_END_V\n"
-                            // check whether the step is positive or negative
-                            "PUSHS LF@%s_STEP_V\n"
-                            "PUSHS int@0\n"
-                            "GTS\n"
-                            "PUSHS bool@true\n"
-                            "JUMPIFNEQS %s_STEP_CHECK_NEG_L\n";
+    const char headerp1[] =
+        "DEFVAR LF@%s_STEP_V\n"
+        "POPS LF@%s_STEP_V\n"
+        "DEFVAR LF@%s_END_V\n"
+        "POPS LF@%s_END_V\n"
+        // the iterator is already defined at the start of the function
+        "POPS %s\n"
+        // check if step isn't 0
+        "PUSHS LF@%s_STEP_V\n"
+        "PUSHS int@0\n"
+        "JUMPIFNEQS %s_START_L\n"
+        "EXIT int@40\n"
+        "LABEL %s_START_L\n"
+        // check whether the iterator is within bounds
+        "PUSHS %s\n"
+        "PUSHS LF@%s_END_V\n"
+        // check whether the step is positive or negative
+        "PUSHS LF@%s_STEP_V\n"
+        "PUSHS int@0\n"
+        "GTS\n"
+        "PUSHS bool@true\n"
+        "JUMPIFNEQS %s_STEP_CHECK_NEG_L\n";
     size_t headerp1Len = 3 * iterNameLen + 10 * uqIdLen + strlen(headerp1);
     char headerp1Buf[headerp1Len + 1];
-    sprintf(headerp1Buf, headerp1, uqId, uqId, uqId, uqId, iterName, iterName,
-            uqId, uqId, uqId, iterName, uqId, uqId, uqId);
+    sprintf(headerp1Buf, headerp1, uqId, uqId, uqId, uqId, iterName, uqId, uqId,
+            uqId, iterName, uqId, uqId, uqId);
 
     const char headerp2[] = "JUMP %s_STEP_CHECK_END_L\n"
                             "LABEL %s_STEP_CHECK_NEG_L\n";
@@ -1199,7 +1271,8 @@ int codeGenStmtStringLit(const char *str, size_t lenght,
 
 int codeGenStmtIdentif(astNode *identif, codeGenBufNode *buffer) {
     // translate the name to IFJcode26
-    const char *name = codeGenGetVarName(buffer, identif->data.identifier.name);
+    const char *name =
+        codeGenGetVarName(buffer, identif->data.identifier.name, NULL);
     GEN_CHECK(name != NULL, -1);
 
     // assemble the final string and insert to buffer
@@ -1314,7 +1387,7 @@ int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer,
         IFJ_GEN_TRY(codeGenInsertTxt("FLOAT2INTS\n", buffer), -1);
         return 0;
     }
-    if (strcmp(name, "StrLength") == 0) {
+    if (strcmp(name, "strLength") == 0) {
         // one value of type string should be on stack
         IFJ_GEN_TRY(codeGenInsertTxt("POPS GF@G1\n"
                                      "STRLEN GF@G1 GF@G1\n"
@@ -1347,7 +1420,8 @@ int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer,
     return 1;
 }
 
-const char *codeGenGetVarName(codeGenBufNode *buffer, const char *id) {
+const char *codeGenGetVarName(codeGenBufNode *buffer, const char *id,
+                              int *uqIdP) {
     static char nameBuf[IFJ_GEN_MAX_ID_LEN];
 
     // check if we are generating a for loop guard and need the iterator name
@@ -1363,6 +1437,10 @@ const char *codeGenGetVarName(codeGenBufNode *buffer, const char *id) {
     GEN_CHECK_PRINT(nameData.id != NULL, NULL,
                     "The variable name %s not found in symtable\n", id);
     (void)nameData;
+
+    if (uqIdP) {
+        *uqIdP = uniqueId;
+    }
 
     // construct the name in IFJ26
     sprintf(nameBuf, "LF@%s$%i", id, uniqueId);
