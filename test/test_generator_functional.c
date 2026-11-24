@@ -426,55 +426,241 @@ void test4(astNode **root) {
     astNode *node = *root;
     node = createProgramNode();
 
-    // prepare the ast
-    Token literStart = {.type = TOKEN_INT_LITERAL, .attribute.intValue = 1112};
-    Token literEnd = {.type = TOKEN_INT_LITERAL, .attribute.intValue = 0};
-    Token literStep = {.type = TOKEN_INT_LITERAL, .attribute.intValue = -2};
+    Token liter0 = {.type = TOKEN_INT_LITERAL, .attribute.intValue = 0};
+    Token liter1 = {.type = TOKEN_INT_LITERAL, .attribute.intValue = 1};
+    Token liter2 = {.type = TOKEN_INT_LITERAL, .attribute.intValue = 2};
+    Token liter3 = {.type = TOKEN_INT_LITERAL, .attribute.intValue = 3};
+    Token liter5 = {.type = TOKEN_INT_LITERAL, .attribute.intValue = 5};
+    Token liter6 = {.type = TOKEN_INT_LITERAL, .attribute.intValue = 6};
+    Token liter9 = {.type = TOKEN_INT_LITERAL, .attribute.intValue = 9};
 
-    // prepare the iterative function
-    astNode *body = createBlockNode();
-    astNode *fun = createFuncDefNode("main", true, NULL, 0, body);
-    fun->data.funcDef.explicitReturnType = INT;
+    // prepare main function: controlExample(): Unit
+    astNode *ExampleBody = createBlockNode();
+    astNode *funExample =
+        createFuncDefNode("controlExample", true, NULL, 0, ExampleBody);
+    funExample->data.funcDef.explicitReturnType = UNIT;
 
-    addFunctionToProgram(node, fun);
+    // val limit = 9
+    addStatementToBlock(
+        ExampleBody,
+        createVarDefNode("limit", true, INT, createLiteralNode(&liter9)));
 
-    astNode *forBody = createBlockNode();
-    addStatementToBlock(body,
-                        createForNode("i", createLiteralNode(&literStart),
-                                      createLiteralNode(&literEnd), true,
-                                      createLiteralNode(&literStep), forBody));
+    // val step = 2
+    addStatementToBlock(
+        ExampleBody,
+        createVarDefNode("step", true, INT, createLiteralNode(&liter2)));
 
-    astNode *print1 = createFuncCallNode("print");
-    print1->data.funcCall.argIfAny = INT;
-    addArgumentToCall(print1, createIdentifierNode("i"));
-    addStatementToBlock(forBody, print1);
+    // val sign = if limit < 0 then -1 else if limit == 0 then 0 else 1
+    astNode *innerElseBlock = createBlockNode();
+    addStatementToBlock(innerElseBlock, createLiteralNode(&liter1));
 
-    astNode *print2 = createFuncCallNode("print");
-    print2->data.funcCall.argIfAny = STRING;
-    Token strLit = {.type = TOKEN_STRING_LITERAL,
-                    .attribute.text.data = "\n",
-                    .attribute.text.length = 1};
-    addArgumentToCall(print2, createLiteralNode(&strLit));
-    addStatementToBlock(forBody, print2);
+    astNode *innerThenBlock = createBlockNode();
+    addStatementToBlock(innerThenBlock, createLiteralNode(&liter0));
+
+    astNode *innerIf =
+        createIfNode(createBinopNode(EQUAL, createIdentifierNode("limit"),
+                                     createLiteralNode(&liter0)),
+                     innerThenBlock, innerElseBlock);
+
+    astNode *outerElseBlock = createBlockNode();
+    addStatementToBlock(outerElseBlock, innerIf);
+
+    astNode *outerThenBlock = createBlockNode();
+    addStatementToBlock(
+        outerThenBlock,
+        createUnopNode(UNARY_MINUS, createLiteralNode(&liter1)));
+
+    astNode *signIf =
+        createIfNode(createBinopNode(LESS, createIdentifierNode("limit"),
+                                     createLiteralNode(&liter0)),
+                     outerThenBlock, outerElseBlock);
+    addStatementToBlock(ExampleBody,
+                        createVarDefNode("sign", true, INT, signIf));
+
+    // var sum = 0
+    addStatementToBlock(
+        ExampleBody,
+        createVarDefNode("sum", false, INT, createLiteralNode(&liter0)));
+
+    // for i <- 1 to limit by step if i != 5 if i < 9 do sum = sum + i
+    astNode *for1Body = createBlockNode();
+    addStatementToBlock(
+        for1Body, createAssignNode(
+                      "sum", createBinopNode(PLUS, createIdentifierNode("sum"),
+                                             createIdentifierNode("i"))));
+    astNode *for1 = createForNode("i", createLiteralNode(&liter1),
+                                  createIdentifierNode("limit"), true,
+                                  createIdentifierNode("step"), for1Body);
+    addGuardToFor(for1, createBinopNode(NOT_EQUAL, createIdentifierNode("i"),
+                                        createLiteralNode(&liter5)));
+    addGuardToFor(for1, createBinopNode(LESS, createIdentifierNode("i"),
+                                        createLiteralNode(&liter9)));
+    addStatementToBlock(ExampleBody, for1);
+
+    // print("sign: ")
+    astNode *callPrintSignLabel = createFuncCallNode("print");
+    Token strSignLabel = {.type = TOKEN_STRING_LITERAL,
+                          .attribute.text.data = "sign: ",
+                          .attribute.text.length = 6};
+    callPrintSignLabel->data.funcCall.argIfAny = STRING;
+    addArgumentToCall(callPrintSignLabel, createLiteralNode(&strSignLabel));
+    addStatementToBlock(ExampleBody, callPrintSignLabel);
+
+    // print(sign)
+    astNode *callPrintSignVal = createFuncCallNode("print");
+    callPrintSignVal->data.funcCall.argIfAny = INT;
+    addArgumentToCall(callPrintSignVal, createIdentifierNode("sign"));
+    addStatementToBlock(ExampleBody, callPrintSignVal);
+
+    // print("\nsum: ")
+    astNode *callPrintSumLabel = createFuncCallNode("print");
+    Token strSumLabel = {.type = TOKEN_STRING_LITERAL,
+                         .attribute.text.data = "\nsum: ",
+                         .attribute.text.length = 6};
+    callPrintSumLabel->data.funcCall.argIfAny = STRING;
+    addArgumentToCall(callPrintSumLabel, createLiteralNode(&strSumLabel));
+    addStatementToBlock(ExampleBody, callPrintSumLabel);
+
+    // print(sum)
+    astNode *callPrintSumVal = createFuncCallNode("print");
+    callPrintSumVal->data.funcCall.argIfAny = INT;
+    addArgumentToCall(callPrintSumVal, createIdentifierNode("sum"));
+    addStatementToBlock(ExampleBody, callPrintSumVal);
+
+    // print("\ndescending:")
+    astNode *callPrintDescLabel = createFuncCallNode("print");
+    Token strDescLabel = {.type = TOKEN_STRING_LITERAL,
+                          .attribute.text.data = "\ndescending:",
+                          .attribute.text.length = 12};
+    callPrintDescLabel->data.funcCall.argIfAny = STRING;
+    addArgumentToCall(callPrintDescLabel, createLiteralNode(&strDescLabel));
+    addStatementToBlock(ExampleBody, callPrintDescLabel);
+
+    // for i <- 6 to 2 by -2 do print(" "); print(i)
+    astNode *for2Body = createBlockNode();
+    astNode *callSpace1 = createFuncCallNode("print");
+    Token strSpace1 = {.type = TOKEN_STRING_LITERAL,
+                       .attribute.text.data = " ",
+                       .attribute.text.length = 1};
+    callSpace1->data.funcCall.argIfAny = STRING;
+    addArgumentToCall(callSpace1, createLiteralNode(&strSpace1));
+    addStatementToBlock(for2Body, callSpace1);
+
+    astNode *callPrintI2 = createFuncCallNode("print");
+    callPrintI2->data.funcCall.argIfAny = INT;
+    addArgumentToCall(callPrintI2, createIdentifierNode("i"));
+    addStatementToBlock(for2Body, callPrintI2);
+
+    astNode *for2 = createForNode(
+        "i", createLiteralNode(&liter6), createLiteralNode(&liter2), true,
+        createUnopNode(UNARY_MINUS, createLiteralNode(&liter2)), for2Body);
+    addStatementToBlock(ExampleBody, for2);
+
+    // print("\n")
+    astNode *callNewline1 = createFuncCallNode("print");
+    Token strNewline1 = {.type = TOKEN_STRING_LITERAL,
+                         .attribute.text.data = "\n",
+                         .attribute.text.length = 1};
+    callNewline1->data.funcCall.argIfAny = STRING;
+    addArgumentToCall(callNewline1, createLiteralNode(&strNewline1));
+    addStatementToBlock(ExampleBody, callNewline1);
+
+    // print("exclusive:")
+    astNode *callPrintExclLabel = createFuncCallNode("print");
+    Token strExclLabel = {.type = TOKEN_STRING_LITERAL,
+                          .attribute.text.data = "exclusive:",
+                          .attribute.text.length = 10};
+    callPrintExclLabel->data.funcCall.argIfAny = STRING;
+    addArgumentToCall(callPrintExclLabel, createLiteralNode(&strExclLabel));
+    addStatementToBlock(ExampleBody, callPrintExclLabel);
+
+    // for i <- 0 until 3 do print(" "); print(i)
+    astNode *for3Body = createBlockNode();
+    astNode *callSpace2 = createFuncCallNode("print");
+    Token strSpace2 = {.type = TOKEN_STRING_LITERAL,
+                       .attribute.text.data = " ",
+                       .attribute.text.length = 1};
+    callSpace2->data.funcCall.argIfAny = STRING;
+    addArgumentToCall(callSpace2, createLiteralNode(&strSpace2));
+    addStatementToBlock(for3Body, callSpace2);
+
+    astNode *callPrintI3 = createFuncCallNode("print");
+    callPrintI3->data.funcCall.argIfAny = INT;
+    addArgumentToCall(callPrintI3, createIdentifierNode("i"));
+    addStatementToBlock(for3Body, callPrintI3);
+
+    astNode *for3 =
+        createForNode("i", createLiteralNode(&liter0),
+                      createLiteralNode(&liter3), false, NULL, for3Body);
+    addStatementToBlock(ExampleBody, for3);
+
+    // print("\n")
+    astNode *callNewline2 = createFuncCallNode("print");
+    Token strNewline2 = {.type = TOKEN_STRING_LITERAL,
+                         .attribute.text.data = "\n",
+                         .attribute.text.length = 1};
+    callNewline2->data.funcCall.argIfAny = STRING;
+    addArgumentToCall(callNewline2, createLiteralNode(&strNewline2));
+    addStatementToBlock(ExampleBody, callNewline2);
+
+    addFunctionToProgram(node, funExample);
 
     // prepare the symtable
     symTableInit();
-    symTableInsertFun("main", UNIT, 0, NULL);
+    symTableInsertFun("controlExample", UNIT, 0, NULL);
     symTableInsertFun("print", UNIT, 1,
                       &((paramData){.id = "val", .dataType = ANY}));
 
-    // generate the ast and output the result
     codeGenState *state = codeGenInit();
-    symTableActivateFun("main");
-    beginBlock();
-    beginBlock();
-    symTableInsertVar("i", INT, false);
-    codeGenBlock(state, forBody, false);
 
+    // generate bottom-up subblocks before parent block/function
+    symTableActivateFun("controlExample");
+    beginBlock();
+    symTableInsertVar("limit", INT, true);
+    symTableInsertVar("step", INT, true);
+    symTableInsertVar("sign", INT, true);
+    symTableInsertVar("sum", INT, false);
+
+    // inner if-expression blocks
+    beginBlock();
+    codeGenBlock(state, innerThenBlock, true);
     endBlock();
-    codeGenBlock(state, body, false);
+    beginBlock();
+    codeGenBlock(state, innerElseBlock, true);
+    endBlock();
 
-    codeGenFunction(state, fun);
+    // outer if-expression blocks
+    beginBlock();
+    codeGenBlock(state, outerThenBlock, true);
+    endBlock();
+    beginBlock();
+    codeGenBlock(state, outerElseBlock, true);
+    endBlock();
+
+    // first for loop scope & body
+    beginBlock();
+    symTableInsertVar("i", INT, true);
+    codeGenBlock(state, for1Body, false);
+    endBlock();
+
+    // second for loop scope & body
+    beginBlock();
+    symTableInsertVar("i", INT, true);
+    codeGenBlock(state, for2Body, false);
+    endBlock();
+
+    // third for loop scope & body
+    beginBlock();
+    symTableInsertVar("i", INT, true);
+    codeGenBlock(state, for3Body, false);
+    endBlock();
+
+    // parent function body and function codegen
+    codeGenBlock(state, ExampleBody, false);
+    endBlock();
+
+    codeGenFunction(state, funExample);
+
     codeGenOutCode(state);
 }
 

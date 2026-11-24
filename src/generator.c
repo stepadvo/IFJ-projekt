@@ -910,8 +910,15 @@ int codeGenStmtFor(astNode *forLoop, codeGenBufNode *buffer,
         codeGenStatement(forLoop->data.forStmt.start, buffer, true, state), -1);
     IFJ_GEN_TRY(
         codeGenStatement(forLoop->data.forStmt.end, buffer, true, state), -1);
-    IFJ_GEN_TRY(
-        codeGenStatement(forLoop->data.forStmt.step, buffer, true, state), -1);
+    if (forLoop->data.forStmt.step) {
+        // if step defined, generate it
+        IFJ_GEN_TRY(
+            codeGenStatement(forLoop->data.forStmt.step, buffer, true, state),
+            -1);
+    } else {
+        // else push literal 1 on stack instead of it
+        IFJ_GEN_TRY(codeGenInsertTxt("PUSHS int@1\n", buffer), -1);
+    }
 
     // insert the header (all parts and the step checks and cmp inbetween)
     IFJ_GEN_TRY(codeGenInsertTxt(headerp1Buf, buffer), -1);

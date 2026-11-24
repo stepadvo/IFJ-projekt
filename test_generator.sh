@@ -3,7 +3,10 @@
 expectedOut=("put expected outputs here" "1" "[2][4][5]
 result: 17" "safe: true
 either: true
-ready" "" "iterative: 120
+ready" "sign: 1
+sum: 11
+descending: 6 4 2
+exclusive: 0 1 2" "iterative: 120
 recursive: 120" "values: true () 1.50
 unit_print: ()
 res: 7.50")
