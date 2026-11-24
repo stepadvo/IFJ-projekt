@@ -158,7 +158,7 @@ TEST_F(CodeGeneratorTest, UtilityFunctions) {
     symTableActivateFun("hello");
     beginBlock();
     symTableInsertVar("counter", INT, false);
-    const char *varName = codeGenGetVarName(buf, "counter");
+    const char *varName = codeGenGetVarName(buf, "counter", NULL);
     ASSERT_NE(varName, nullptr);
     EXPECT_EQ(strncmp(varName, "LF@counter", 10), 0);
 

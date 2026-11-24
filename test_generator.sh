@@ -7,14 +7,17 @@ ready" "sign: 1
 sum: 11
 descending: 6 4 2
 exclusive: 0 1 2" "iterative: 120
-recursive: 120" "values: true () 1.50
+recursive: 120" "edcba
+abc
+length: 5
+half: 2.50" "values: true () 1.50
 unit_print: ()
 res: 7.50")
-message=("put test message here" "Simple test" "Test from funexp extension example" "Test from Boolthen extension example" "Test from Control extension example" "Test from factorial example" "Test yet untested")
+message=("put test message here" "Simple test" "Test from funexp extension example" "Test from Boolthen extension example" "Test from Control extension example" "Test from factorial example" "Test from strings example" "Test yet untested")
 passed="true"
 failedArr=""
 
-for i in {1..6}; do
+for i in {1..7}; do
     printf "\n"
     printf "==========\n"
     printf " TEST %i \n" "$i"
