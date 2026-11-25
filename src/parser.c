@@ -27,18 +27,13 @@ static size_t currentLineIndent = 0;
 static bool advance(void) {
     LexerStatus status = getToken(lexer, &currentToken);
 
-    /** set lexer/internal error */
-    if (status == LEXER_OK) {
-        if (currentToken.startsLogicalLine)
-            currentLineIndent = currentToken.indent;
-        return true;
-    }
-    if (status == LEXER_INTERNAL_ERROR)
-        setErrCode(99);
-    else
-        setErrCode(1);
+    /** the lexer reports its own errors through logErr() */
+    if (status != LEXER_OK)
+        return false;
 
-    return false;
+    if (currentToken.startsLogicalLine)
+        currentLineIndent = currentToken.indent;
+    return true;
 }
 
 /**
@@ -46,11 +41,7 @@ static bool advance(void) {
  * @param message Error message to print.
  */
 static void syntaxError(const char *message) {
-    fprintf(stderr, "Syntax error at line %zu: %s\n", currentToken.line,
-            message);
-    setErrCode(2);
-
-    return;
+    logErr(ERR_SYNTAX, currentToken.line, currentToken.column, "%s\n", message);
 }
 
 /**
@@ -1338,7 +1329,7 @@ static astNode *parseFunctionDef(bool isMain) {
         freeAst(body);
         freeParameters(params, paramCount);
         free(name);
-        setErrCode(99);
+        logErr(ERR_INTERNAL, LOGERR_NO_POS, LOGERR_NO_POS, LOGERR_NO_DETMSG);
         return NULL;
     }
 
@@ -1355,11 +1346,9 @@ astNode *parse(void) {
     currentToken = (Token){0};
     currentLineIndent = 0;
     lexer = lexerCreate(stdin);
-    if (lexer == NULL) {
-        fprintf(stderr, "Internal error: could not create lexer\n");
-        setErrCode(99);
+    /** lexerCreate() already reports initialization errors */
+    if (lexer == NULL)
         return NULL;
-    }
     astNode *root = NULL;
 
     /** parse all functions after import */
