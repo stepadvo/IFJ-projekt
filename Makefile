@@ -28,8 +28,8 @@ OBJECTS = compiler.o parser.o ast.o lexer.o token.o symtable.o bst.o errcode.o a
 #TEST_EXAMPLE_O = test_example.o src_example.o
 TEST_BST_O = bst.o test_bst.o errcode.o
 TEST_SYMTABLE_O = bst.o symtable.o test_symtable.o errcode.o
-TEST_AST_O = ast.o test_ast.o
-TEST_EXPRESSION_O = expression.o ast.o test_expression.o
+TEST_AST_O = ast.o test_ast.o errcode.o
+TEST_EXPRESSION_O = expression.o ast.o test_expression.o errcode.o
 #TEST_PARSER_O = parser.o expression.o ast.o lexer.o token.o errcode.o test_parser.o
 
 #rules:
@@ -68,3 +68,4 @@ $(foreach t,$(TEST_STEMS),$(eval $(call DEFINE_TEST_RULES,$(t))))
 
 .PHONY: all clean format test printast
 	$(foreach t,$(TEST_STEMS),$($(t)) $($(t))_build) printast test
+

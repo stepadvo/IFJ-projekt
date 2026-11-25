@@ -66,8 +66,9 @@ void exprStackDestroy(ExprStack *stack);
  * @brief Pushes an item onto the stack.
  * @param stack Expression stack.
  * @param item Item to push.
+ * @return 0 on success, -1 on memory allocation err
  */
-void exprStackPush(ExprStack *stack, ExprStackItem item);
+int exprStackPush(ExprStack *stack, ExprStackItem item);
 
 /**
  * @brief Removes the top item.

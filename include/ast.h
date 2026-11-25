@@ -307,9 +307,9 @@ struct astNode {
 /**
  * @brief Ensures a memory allocation succeeded.
  * @param ptr The pointer returned by malloc, calloc, or realloc.
- * Exits the program with code 99 if the pointer is NULL.
+ * Logs error and returns -1 if the pointer is NULL. Else returns 0
  */
-void checkMalloc(void *ptr);
+int checkMalloc(void *ptr);
 
 /**
  * @brief Initializes a new program root node.
@@ -328,7 +328,8 @@ astNode *createBlockNode(void);
  * @param blockNode The block to add the statement to.
  * @param statement The statement to add. The block takes ownership of this
  * node.
- * @return 0 on success, or -1 if arguments are invalid.
+ * @return 0 on success, or -1 if arguments are invalid or -2 on memory
+ * allocation err.
  */
 int addStatementToBlock(astNode *blockNode, astNode *statement);
 
@@ -441,7 +442,8 @@ astNode *createFuncCallNode(char *name);
  * @brief Appends an argument to a function call.
  * @param callNode The function call node to modify.
  * @param argument The argument expression to add. The node takes ownership.
- * @return 0 on success, or -1 if arguments are invalid.
+ * @return 0 on success, or -1 if arguments are invalid, -2 on memory allocation
+ * err.
  */
 int addArgumentToCall(astNode *callNode, astNode *argument);
 
@@ -484,7 +486,8 @@ void freeAst(astNode *root);
  * @brief Appends a parsed function definition to the program root.
  * @param programNode The program root node.
  * @param funcDef The function to add. The program takes ownership.
- * @return 0 on success, or -1 if arguments are invalid.
+ * @return 0 on success, or -1 if arguments are invalid or -2 on memory
+ * allocation err.
  */
 int addFunctionToProgram(astNode *programNode, astNode *funcDef);
 

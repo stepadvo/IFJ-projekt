@@ -8,6 +8,7 @@
  */
 
 #include "parser.h"
+#include "ast.h"
 #include "compiler.h"
 #include "expression.h"
 #include "lexer.h"
@@ -67,7 +68,9 @@ static char *copyName(void) {
     /** make space for the name and '\0' */
     size_t length = currentToken.attribute.text.length;
     char *name = malloc(length + 1);
-    checkMalloc(name);
+    if (checkMalloc(name) != 0) {
+        return NULL;
+    }
 
     memcpy(name, currentToken.attribute.text.data, length + 1);
     return name;
@@ -169,6 +172,9 @@ static bool parseParameters(astFuncParam **params, size_t *count) {
 
         /** save name before advance */
         char *name = copyName();
+        if (!name) {
+            return false;
+        }
 
         if (!advance() ||
             !match(TOKEN_COLON, "expected ':' after parameter name")) {
@@ -187,7 +193,10 @@ static bool parseParameters(astFuncParam **params, size_t *count) {
             size_t newCapacity = capacity == 0 ? 4 : capacity * 2;
             astFuncParam *newParams =
                 realloc(*params, newCapacity * sizeof(**params));
-            checkMalloc(newParams);
+            if (checkMalloc(newParams) != 0) {
+                free(name);
+                return false;
+            }
             *params = newParams;
             capacity = newCapacity;
         }
@@ -402,11 +411,21 @@ static ExprSymbol expressionInputSymbol(bool expectsOperand, size_t openParens,
  * @param stops Tokens that may end the expression.
  * @return Value node, or NULL if the token is not a value.
  */
-static astNode *expressionValueNode(ExpressionStops stops) {
+static astNode *expressionValueNode(ExpressionStops stops, int *err) {
+    // if err requested, initialize to 0
+    if (err) {
+        *err = 0;
+    }
     if (currentToken.type == TOKEN_KW_IF)
         return parseIf(currentLineIndent, true, stops);
     if (currentToken.type == TOKEN_IDENTIFIER) {
         char *name = copyName();
+        if (!name) {
+            if (err) {
+                *err = -1;
+            }
+            return NULL;
+        }
         if (!advance()) {
             free(name);
             return NULL;
@@ -532,8 +551,11 @@ static bool reduceExpression(ExprStack *stack) {
         }
         last->node = NULL;
         stack->count -= 2;
-        exprStackPush(
-            stack, (ExprStackItem){.symbol = EXPR_NONTERMINAL, .node = node});
+        if (exprStackPush(stack, (ExprStackItem){.symbol = EXPR_NONTERMINAL,
+                                                 .node = node}) != 0) {
+            // TODO maybe set parsErr
+            return false;
+        }
         return true;
     }
 
@@ -555,8 +577,11 @@ static bool reduceExpression(ExprStack *stack) {
     left->node = NULL;
     last->node = NULL;
     stack->count -= 3;
-    exprStackPush(stack,
-                  (ExprStackItem){.symbol = EXPR_NONTERMINAL, .node = node});
+    if (exprStackPush(stack, (ExprStackItem){.symbol = EXPR_NONTERMINAL,
+                                             .node = node}) != 0) {
+        // TODO maybe set parsErr
+        return false;
+    }
     return true;
 }
 
@@ -565,7 +590,11 @@ static bool reduceExpression(ExprStack *stack) {
  * @param stack Expression stack.
  * @return True if the parentheses are valid.
  */
-static bool reduceParentheses(ExprStack *stack) {
+static bool reduceParentheses(ExprStack *stack, int *err) {
+    // if err requested, initialize to 0
+    if (err) {
+        *err = 0;
+    }
     size_t count = stack->count;
     if (count == 0) {
         return false;
@@ -574,8 +603,20 @@ static bool reduceParentheses(ExprStack *stack) {
     /** () is the Unit value */
     if (stack->items[count - 1].symbol == EXPR_LPAREN) {
         stack->count--;
-        exprStackPush(stack, (ExprStackItem){.symbol = EXPR_NONTERMINAL,
-                                             .node = createUnitNode()});
+        astNode *unitNode = createUnitNode();
+        if (!unitNode) {
+            if (err) {
+                *err = -1;
+            }
+            return false;
+        }
+        if (exprStackPush(stack, (ExprStackItem){.symbol = EXPR_NONTERMINAL,
+                                                 .node = unitNode}) != 0) {
+            if (err) {
+                *err = -1;
+            }
+            return false;
+        }
         return true;
     }
 
@@ -588,8 +629,13 @@ static bool reduceParentheses(ExprStack *stack) {
     astNode *node = stack->items[count - 1].node;
     stack->items[count - 1].node = NULL;
     stack->count -= 2;
-    exprStackPush(stack,
-                  (ExprStackItem){.symbol = EXPR_NONTERMINAL, .node = node});
+    if (exprStackPush(stack, (ExprStackItem){.symbol = EXPR_NONTERMINAL,
+                                             .node = node}) != 0) {
+        if (err) {
+            *err = -1;
+        }
+        return false;
+    }
     return true;
 }
 
@@ -603,12 +649,16 @@ static astNode *parseExpressionFromValue(astNode *firstValue,
                                          ExpressionStops stops) {
     ExprStack stack;
     exprStackInit(&stack);
-    exprStackPush(&stack, (ExprStackItem){.symbol = EXPR_END});
+    if (exprStackPush(&stack, (ExprStackItem){.symbol = EXPR_END}) != 0) {
+        return NULL;
+    }
 
     /** used when a statement already read its first name */
     if (firstValue != NULL) {
-        exprStackPush(
-            &stack, (ExprStackItem){.symbol = EXPR_VALUE, .node = firstValue});
+        if (exprStackPush(&stack, (ExprStackItem){.symbol = EXPR_VALUE,
+                                                  .node = firstValue}) != 0) {
+            return NULL;
+        }
     }
 
     size_t openParens = 0;
@@ -629,8 +679,13 @@ static astNode *parseExpressionFromValue(astNode *firstValue,
             ExprStackItem item = {.symbol = input,
                                   .tokenType = currentToken.type};
             if (input == EXPR_VALUE) {
-                item.node = expressionValueNode(stops);
+                int exprValNodErr;
+                item.node = expressionValueNode(stops, &exprValNodErr);
                 if (item.node == NULL) {
+                    // check for err
+                    if (exprValNodErr != 0) {
+                        return NULL;
+                    }
                     syntaxError("expected value");
                     break;
                 }
@@ -639,7 +694,9 @@ static astNode *parseExpressionFromValue(astNode *firstValue,
             if (input != EXPR_VALUE && !advance()) {
                 break;
             }
-            exprStackPush(&stack, item);
+            if (exprStackPush(&stack, item) != 0) {
+                break;
+            }
 
             if (input == EXPR_LPAREN) {
                 openParens++;
@@ -651,7 +708,12 @@ static astNode *parseExpressionFromValue(astNode *firstValue,
                 break;
             }
         } else if (action == PREC_MATCH) {
-            if (!reduceParentheses(&stack)) {
+            int reduceParenErr;
+            if (!reduceParentheses(&stack, &reduceParenErr)) {
+                // check if err occured
+                if (reduceParenErr != 0) {
+                    return NULL;
+                }
                 syntaxError("invalid parentheses");
                 break;
             }
@@ -711,6 +773,9 @@ static astNode *parseVarDef(bool isConstant, ExpressionStops stops) {
     }
 
     char *name = copyName();
+    if (!name) {
+        return NULL;
+    }
     if (!advance()) {
         free(name);
         return NULL;
@@ -783,6 +848,9 @@ static astNode *parseBody(size_t indent, bool isExpression,
         return NULL;
 
     astNode *body = createBlockNode();
+    if (!body) {
+        return NULL;
+    }
     if (addStatementToBlock(body, statement) != 0) {
         freeAst(statement);
         freeAst(body);
@@ -842,7 +910,12 @@ static astNode *parseIf(size_t indent, bool isExpression,
             astNode *nested = parseIf(indent, isExpression, stops);
             if (nested != NULL) {
                 elseBlock = createBlockNode();
-                addStatementToBlock(elseBlock, nested);
+                if (addStatementToBlock(elseBlock, nested) == -2) {
+                    freeAst(condition);
+                    freeAst(thenBlock);
+                    freeAst(elseBlock);
+                    return NULL;
+                }
             }
         } else {
             elseBlock = parseBody(indent, isExpression, stops);
@@ -929,6 +1002,9 @@ static astNode *parseFor(size_t indent, ExpressionStops stops) {
         return NULL;
     }
     char *name = copyName();
+    if (!name) {
+        return NULL;
+    }
     if (!advance() ||
         !match(TOKEN_LEFT_ARROW, "expected '<-' after iterator")) {
         free(name);
@@ -1019,7 +1095,10 @@ static astNode *parseFor(size_t indent, ExpressionStops stops) {
             freeAst(forNode);
             return NULL;
         }
-        addGuardToFor(forNode, guard);
+        if (addGuardToFor(forNode, guard) == -2) {
+            freeAst(forNode);
+            return NULL;
+        }
 
         if (multiline) {
             if (currentToken.type != TOKEN_NEWLINE || !advance()) {
@@ -1075,6 +1154,9 @@ static astNode *parseStatement(size_t indent, ExpressionStops stops) {
     case TOKEN_IDENTIFIER: {
         /** check if name starts an assignment or expression */
         char *name = copyName();
+        if (!name) {
+            return NULL;
+        }
         if (!advance()) {
             free(name);
             return NULL;
@@ -1148,7 +1230,9 @@ static astNode *parseBlock(size_t parentIndent) {
         if (statement == NULL) {
             break;
         }
-        addStatementToBlock(block, statement);
+        if (addStatementToBlock(block, statement) != -2) {
+            break;
+        }
 
         /** completed control blocks already point to the next statement */
         if ((statement->type == AST_IF || statement->type == AST_WHILE ||
@@ -1249,6 +1333,9 @@ static astNode *parseFunctionDef(bool isMain) {
 
     /** save name and parameters */
     char *name = copyName();
+    if (!name) {
+        return NULL;
+    }
     astFuncParam *params = NULL;
     size_t paramCount = 0;
 
@@ -1370,7 +1457,9 @@ astNode *parse(void) {
             if (function == NULL) {
                 break;
             }
-            addFunctionToProgram(root, function);
+            if (addFunctionToProgram(root, function) == -2) {
+                break;
+            }
         }
     }
 

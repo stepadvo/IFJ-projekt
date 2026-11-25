@@ -5,36 +5,50 @@
  */
 
 #include "ast.h"
+#include "compiler.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-void checkMalloc(void *ptr) {
+int checkMalloc(void *ptr) {
     if (ptr == NULL) {
-        fprintf(stderr, "Internal error: Memory allocation failed\n");
-        exit(99);
+        logErr(ERR_INTERNAL, -1, -1, NULL);
+        return -1;
     }
+    return 0;
 }
 
 static astNode *newNode(astNodeType type) {
     astNode *node = calloc(1, sizeof(*node));
-    checkMalloc(node);
+    if (checkMalloc(node) != 0) {
+        return NULL;
+    }
     node->type = type;
     node->resultType = UNKNOWN;
     return node;
 }
 
 static void appendNode(astNode ***items, size_t *count, size_t *capacity,
-                       astNode *node) {
+                       astNode *node, int *err) {
     if (*count == *capacity) {
         size_t newCapacity = *capacity ? *capacity * 2 : 4;
         astNode **newItems = realloc(*items, newCapacity * sizeof(**items));
-        checkMalloc(newItems);
+        if (checkMalloc(newItems) != 0) {
+            // set err if requested
+            if (err) {
+                *err = -1;
+            }
+            return;
+        }
         *items = newItems;
         *capacity = newCapacity;
     }
     (*items)[(*count)++] = node;
+    // set err if requested
+    if (err) {
+        *err = 0;
+    }
 }
 
 astNode *createProgramNode(void) { return newNode(AST_PROGRAM); }
@@ -45,9 +59,13 @@ int addFunctionToProgram(astNode *programNode, astNode *funcDef) {
         return -1;
     }
 
+    int appendErr;
     appendNode(&programNode->data.program.functions,
                &programNode->data.program.count,
-               &programNode->data.program.capacity, funcDef);
+               &programNode->data.program.capacity, funcDef, &appendErr);
+    if (appendErr != 0) {
+        return -2;
+    }
     return 0;
 }
 
@@ -57,6 +75,9 @@ astNode *createFuncDefNode(char *name, bool isMain, astFuncParam *params,
         return NULL;
 
     astNode *node = newNode(AST_FUNC_DEF);
+    if (!node) {
+        return NULL;
+    }
     node->data.funcDef.name = name;
     node->data.funcDef.isMain = isMain;
     node->data.funcDef.explicitReturnType = UNKNOWN;
@@ -69,6 +90,9 @@ astNode *createFuncDefNode(char *name, bool isMain, astFuncParam *params,
 
 astNode *createBlockNode(void) {
     astNode *node = newNode(AST_BLOCK);
+    if (!node) {
+        return NULL;
+    }
     node->data.block.bufferNum = -1;
     node->data.block.parentIfForBody = NULL;
     return node;
@@ -80,8 +104,12 @@ int addStatementToBlock(astNode *blockNode, astNode *statement) {
         return -1;
     }
 
+    int appendErr;
     appendNode(&blockNode->data.block.statements, &blockNode->data.block.count,
-               &blockNode->data.block.capacity, statement);
+               &blockNode->data.block.capacity, statement, &appendErr);
+    if (appendErr != 0) {
+        return -2;
+    }
     return 0;
 }
 
@@ -91,6 +119,9 @@ astNode *createVarDefNode(char *name, bool isConstant, varType explicitType,
         return NULL;
 
     astNode *node = newNode(AST_VAR_DEF);
+    if (!node) {
+        return NULL;
+    }
     node->data.varDef.name = name;
     node->data.varDef.isConstant = isConstant;
     node->data.varDef.explicitType = explicitType;
@@ -103,6 +134,9 @@ astNode *createAssignNode(char *name, astNode *value) {
         return NULL;
 
     astNode *node = newNode(AST_ASSIGN);
+    if (!node) {
+        return NULL;
+    }
     node->data.assign.name = name;
     node->data.assign.value = value;
     return node;
@@ -110,6 +144,9 @@ astNode *createAssignNode(char *name, astNode *value) {
 
 astNode *createReturnNode(astNode *value) {
     astNode *node = newNode(AST_RETURN);
+    if (!node) {
+        return NULL;
+    }
     node->data.returnStmt.value = value;
     return node;
 }
@@ -120,6 +157,9 @@ astNode *createIfNode(astNode *condition, astNode *thenBlock,
         return NULL;
 
     astNode *node = newNode(AST_IF);
+    if (!node) {
+        return NULL;
+    }
     node->data.ifStmt.condition = condition;
     node->data.ifStmt.thenBlock = thenBlock;
     node->data.ifStmt.elseBlock = elseBlock;
@@ -131,6 +171,9 @@ astNode *createWhileNode(astNode *condition, astNode *bodyBlock) {
         return NULL;
 
     astNode *node = newNode(AST_WHILE);
+    if (!node) {
+        return NULL;
+    }
     node->data.whileStmt.condition = condition;
     node->data.whileStmt.bodyBlock = bodyBlock;
     return node;
@@ -142,6 +185,9 @@ astNode *createForNode(char *iteratorName, astNode *start, astNode *end,
         return NULL;
 
     astNode *node = newNode(AST_FOR);
+    if (!node) {
+        return NULL;
+    }
     node->data.forStmt.iteratorName = iteratorName;
     node->data.forStmt.start = start;
     node->data.forStmt.end = end;
@@ -157,8 +203,12 @@ int addGuardToFor(astNode *forNode, astNode *guard) {
     if (forNode == NULL || forNode->type != AST_FOR || guard == NULL)
         return -1;
 
+    int appendErr;
     appendNode(&forNode->data.forStmt.guards, &forNode->data.forStmt.guardCount,
-               &forNode->data.forStmt.guardCapacity, guard);
+               &forNode->data.forStmt.guardCapacity, guard, &appendErr);
+    if (appendErr != 0) {
+        return -2;
+    }
     return 0;
 }
 
@@ -167,6 +217,9 @@ astNode *createFuncCallNode(char *name) {
         return NULL;
 
     astNode *node = newNode(AST_FUNC_CALL);
+    if (!node) {
+        return NULL;
+    }
     node->data.funcCall.funcName = name;
     node->data.funcCall.argIfAny = UNKNOWN;
     return node;
@@ -178,9 +231,13 @@ int addArgumentToCall(astNode *callNode, astNode *argument) {
         return -1;
     }
 
+    int appendErr;
     appendNode(&callNode->data.funcCall.arguments,
                &callNode->data.funcCall.argCount,
-               &callNode->data.funcCall.argCapacity, argument);
+               &callNode->data.funcCall.argCapacity, argument, &appendErr);
+    if (appendErr != 0) {
+        return -2;
+    }
     return 0;
 }
 
@@ -189,6 +246,9 @@ astNode *createBinopNode(astBinopType op, astNode *left, astNode *right) {
         return NULL;
 
     astNode *node = newNode(AST_BINOP);
+    if (!node) {
+        return NULL;
+    }
     node->data.binop.op = op;
     node->data.binop.left = left;
     node->data.binop.right = right;
@@ -200,6 +260,9 @@ astNode *createUnopNode(astUnopType op, astNode *operand) {
         return NULL;
 
     astNode *node = newNode(AST_UNOP);
+    if (!node) {
+        return NULL;
+    }
     node->data.unop.op = op;
     node->data.unop.operand = operand;
     return node;
@@ -210,6 +273,9 @@ astNode *createIdentifierNode(char *name) {
         return NULL;
 
     astNode *node = newNode(AST_IDENTIFIER);
+    if (!node) {
+        return NULL;
+    }
     node->data.identifier.name = name;
     return node;
 }
@@ -219,6 +285,9 @@ astNode *createInt2DoubleNode(astNode *convertee) {
         return NULL;
 
     astNode *node = newNode(AST_INT2DOUBLE);
+    if (!node) {
+        return NULL;
+    }
     node->data.int2doubleConv.value = convertee;
     return node;
 }
@@ -232,6 +301,9 @@ astNode *createLiteralNode(Token *token) {
     }
 
     astNode *node = newNode(AST_LITERAL);
+    if (!node) {
+        return NULL;
+    }
     node->data.literal.litType = token->type;
 
     if (token->type == TOKEN_STRING_LITERAL) {
@@ -242,7 +314,10 @@ astNode *createLiteralNode(Token *token) {
         }
 
         char *text = malloc(length + 1);
-        checkMalloc(text);
+        if (checkMalloc(text) != 0) {
+            free(node);
+            return NULL;
+        }
         memcpy(text, token->attribute.text.data, length);
         text[length] = '\0';
         node->data.literal.attribute.text.data = text;
@@ -255,6 +330,9 @@ astNode *createLiteralNode(Token *token) {
 
 astNode *createUnitNode(void) {
     astNode *node = newNode(AST_LITERAL);
+    if (!node) {
+        return NULL;
+    }
     node->resultType = UNIT;
     node->data.literal.litType = TOKEN_LPAREN;
     return node;

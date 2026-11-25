@@ -34,19 +34,23 @@ void exprStackDestroy(ExprStack *stack) {
  * @brief Pushes an item onto the stack.
  * @param stack Expression stack.
  * @param item Item to push.
+ * @return 0 on success, -1 on memory allocation err
  */
-void exprStackPush(ExprStack *stack, ExprStackItem item) {
+int exprStackPush(ExprStack *stack, ExprStackItem item) {
     /** grow the stack when full */
     if (stack->count == stack->capacity) {
         size_t newCapacity = stack->capacity == 0 ? 4 : stack->capacity * 2;
         ExprStackItem *newItems =
             realloc(stack->items, newCapacity * sizeof(*newItems));
-        checkMalloc(newItems);
+        if (checkMalloc(newItems) != 0) {
+            return -1;
+        }
         stack->items = newItems;
         stack->capacity = newCapacity;
     }
 
     stack->items[stack->count++] = item;
+    return 0;
 }
 
 /**
