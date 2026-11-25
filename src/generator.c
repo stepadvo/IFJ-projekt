@@ -290,7 +290,6 @@ int codeGenFunction(codeGenState *state, astNode *funRoot) {
         return -1;
     }
     codeGenVariables(funRoot, funBuf);
-
     // append the actual body to the new buffer
     codeGenInsertBufToTxt(state, funBuf, bodyBuffer,
                           funRoot->data.funcDef.body);
@@ -314,6 +313,7 @@ int codeGenFunction(codeGenState *state, astNode *funRoot) {
     }
     outBuf->buf = outBufData;
     outBuf->bufSize = totalLen;
+    outBuf->nextBuf = NULL;
 
     int pos = 0; // for keeping the position in the outBufData
     // generate the function header
@@ -421,6 +421,9 @@ codeGenBufNode *codeGenCreateAndInsertBuf(codeGenState *state) {
         logErr(ERR_INTERNAL, LOGERR_NO_POS, LOGERR_NO_POS, LOGERR_NO_DETMSG);
         return NULL;
     }
+    // initialize the first section
+    tempSectionP->size = 0;
+    tempSectionP->next = NULL;
 
     // initialize the buffer
     codeGenBufNode buf = {.firstSection = tempSectionP,
@@ -1201,7 +1204,11 @@ int codeGenStmtLiteral(astNode *lit, codeGenBufNode *buffer) {
         sprintf(buf, "PUSHS int@%li\n", lit->data.literal.attribute.intValue);
         break;
     case TOKEN_BOOL_LITERAL:
-        sprintf(buf, "PUSHS bool@%s\n", "true");
+        if (lit->data.literal.attribute.boolValue) {
+            sprintf(buf, "PUSHS bool@%s\n", "true");
+        } else {
+            sprintf(buf, "PUSHS bool@%s\n", "false");
+        }
         break;
     case TOKEN_DOUBLE_LITERAL:
         sprintf(buf, "PUSHS float@%a\n",

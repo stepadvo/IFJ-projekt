@@ -1737,7 +1737,7 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    astNode *root;
+    astNode *root = NULL;
 
     switch (atoi(argv[1])) {
     case 1:
