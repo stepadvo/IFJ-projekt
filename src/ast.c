@@ -70,6 +70,7 @@ astNode *createFuncDefNode(char *name, bool isMain, astFuncParam *params,
 astNode *createBlockNode(void) {
     astNode *node = newNode(AST_BLOCK);
     node->data.block.bufferNum = -1;
+    node->data.block.parentIfForBody = NULL;
     return node;
 }
 
@@ -147,6 +148,8 @@ astNode *createForNode(char *iteratorName, astNode *start, astNode *end,
     node->data.forStmt.endInclusive = endInclusive;
     node->data.forStmt.step = step;
     node->data.forStmt.body = body;
+
+    body->data.block.parentIfForBody = node;
     return node;
 }
 
@@ -208,6 +211,15 @@ astNode *createIdentifierNode(char *name) {
 
     astNode *node = newNode(AST_IDENTIFIER);
     node->data.identifier.name = name;
+    return node;
+}
+
+astNode *createInt2DoubleNode(astNode *convertee) {
+    if (convertee == NULL)
+        return NULL;
+
+    astNode *node = newNode(AST_INT2DOUBLE);
+    node->data.int2doubleConv.value = convertee;
     return node;
 }
 
@@ -326,6 +338,9 @@ void freeAst(astNode *node) {
         break;
     case AST_IDENTIFIER:
         free(node->data.identifier.name);
+        break;
+    case AST_INT2DOUBLE:
+        free(node->data.int2doubleConv.value);
         break;
     }
 

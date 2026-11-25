@@ -43,7 +43,9 @@ typedef enum {
     /**< A reference to a variable or parameter by its name. */
     AST_IDENTIFIER,
     /**< A block of statements grouped together, usually in braces. */
-    AST_BLOCK
+    AST_BLOCK,
+    /**< A convertion from INT to DOUBLE (for the generator)*/
+    AST_INT2DOUBLE
 } astNodeType;
 
 /** @brief Type of unary oparators. */
@@ -122,11 +124,6 @@ struct astNode {
             astNode *left;
             /**< The right-hand side of the operation. */
             astNode *right;
-            /**< If [int] binop [float]:
-             * ~> [float] binop [float]
-             */
-            bool convertLeft;
-            bool convertRight;
         } binop;
 
         /**
@@ -223,6 +220,9 @@ struct astNode {
             /**< Used internally by the code generator. Safe to ignore for now.
              */
             int bufferNum;
+            /**< Used internally by the code generator. Set to not NULL only
+             * when the block is a body of for loop */
+            astNode *parentIfForBody;
         } block;
 
         /**
@@ -293,6 +293,14 @@ struct astNode {
             /**< The expression to return. NULL if returning nothing. */
             astNode *value;
         } returnStmt;
+
+        /**
+         * @brief A int to double convertion
+         */
+        struct {
+            /**< The expression to be converted */
+            astNode *value;
+        } int2doubleConv;
     } data;
 };
 
@@ -311,7 +319,7 @@ astNode *createProgramNode(void);
 
 /**
  * @brief Initializes a new block node.
- * @return A fresh AST_BLOCK node.
+ * @return A fresh AST_BLOCK node. (parentIfForBody will be NULL)
  */
 astNode *createBlockNode(void);
 
@@ -382,8 +390,10 @@ astNode *createWhileNode(astNode *condition, astNode *bodyBlock);
  * @param end The ending bound.
  * @param endInclusive True if 'to' is used, false for 'until'.
  * @param step The step expression. NULL defaults to a step of 1.
- * @param body The code body of the loop.
+ * @param body The code body of the loop (must be type AST_BLOCK).
  * @return A new AST_FOR node.
+ *
+ * will set the parentIfForBody of body to point to the created node
  */
 astNode *createForNode(char *iteratorName, astNode *start, astNode *end,
                        bool endInclusive, astNode *step, astNode *body);
@@ -455,6 +465,13 @@ astNode *createAssignNode(char *name, astNode *value);
  * @return A new AST_RETURN node.
  */
 astNode *createReturnNode(astNode *value);
+
+/**
+ * @brief Creates a int to double convertion node.
+ * @param
+ * @return A new AST_INT2DOUBLE node.
+ */
+astNode *createInt2DoubleNode(astNode *convertee);
 
 /**
  * @brief Recursively frees an AST node and all its children.
