@@ -10,6 +10,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef IFJ_AST_NOOWN
+    #define FREEOWN(ptr) free(ptr)
+#else
+    #define FREEOWN(ptr) (void)0
+#endif
+
 void checkMalloc(void *ptr) {
     if (ptr == NULL) {
         fprintf(stderr, "Internal error: Memory allocation failed\n");
@@ -276,11 +282,11 @@ void freeAst(astNode *node) {
         free(node->data.program.functions);
         break;
     case AST_FUNC_DEF:
-        free(node->data.funcDef.name);
+        FREEOWN(node->data.funcDef.name);
         for (size_t i = 0; i < node->data.funcDef.paramCount; i++) {
-            free(node->data.funcDef.params[i].name);
+            FREEOWN(node->data.funcDef.params[i].name);
         }
-        free(node->data.funcDef.params);
+        FREEOWN(node->data.funcDef.params);
         freeAst(node->data.funcDef.body);
         break;
     case AST_BLOCK:
@@ -290,11 +296,11 @@ void freeAst(astNode *node) {
         free(node->data.block.statements);
         break;
     case AST_VAR_DEF:
-        free(node->data.varDef.name);
+        FREEOWN(node->data.varDef.name);
         freeAst(node->data.varDef.initializer);
         break;
     case AST_ASSIGN:
-        free(node->data.assign.name);
+        FREEOWN(node->data.assign.name);
         freeAst(node->data.assign.value);
         break;
     case AST_RETURN:
@@ -310,7 +316,7 @@ void freeAst(astNode *node) {
         freeAst(node->data.whileStmt.bodyBlock);
         break;
     case AST_FOR:
-        free(node->data.forStmt.iteratorName);
+        FREEOWN(node->data.forStmt.iteratorName);
         freeAst(node->data.forStmt.start);
         freeAst(node->data.forStmt.end);
         freeAst(node->data.forStmt.step);
@@ -321,7 +327,7 @@ void freeAst(astNode *node) {
         freeAst(node->data.forStmt.body);
         break;
     case AST_FUNC_CALL:
-        free(node->data.funcCall.funcName);
+        FREEOWN(node->data.funcCall.funcName);
         for (size_t i = 0; i < node->data.funcCall.argCount; i++) {
             freeAst(node->data.funcCall.arguments[i]);
         }
@@ -340,7 +346,7 @@ void freeAst(astNode *node) {
         }
         break;
     case AST_IDENTIFIER:
-        free(node->data.identifier.name);
+        FREEOWN(node->data.identifier.name);
         break;
     case AST_INT2DOUBLE:
         free(node->data.int2doubleConv.value);

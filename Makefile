@@ -48,7 +48,7 @@ printast:
 
 test_generator_function: generator.o test_generator_functional.o symtable.o errcode.o bst.o ast.o
 	$(MAKE) clean
-	$(MAKE) CFLAGS="$(CFLAGS) -DIFJ_GEN_DEBUG" $^
+	$(MAKE) CFLAGS="$(CFLAGS) -DIFJ_GEN_DEBUG -DIFJ_AST_NOOWN" $^
 	$(CC) $(CFLAGS) -o $@.out $^
 	./test_generator.sh
 

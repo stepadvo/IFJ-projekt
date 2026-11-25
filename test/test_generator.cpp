@@ -114,6 +114,13 @@ TEST_F(CodeGeneratorTest, BufferOperations) {
     EXPECT_NE(strstr(outBuf, "MOVE LF@x$1 int@42"), nullptr);
 
     // Test removing buffer from state and destroying it separately
+    bufSection *curr = buf->firstSection;
+    bufSection *next;
+    while (curr) {
+        next = curr->next;
+        free(curr);
+        curr = next;
+    }
     codeGenRemoveBuf(state, buf);
     EXPECT_EQ(state->firstBuf, nullptr);
     EXPECT_EQ(state->lastBuf, nullptr);
@@ -167,6 +174,7 @@ TEST_F(CodeGeneratorTest, UtilityFunctions) {
     const char *labelId = codeGenGetLabelId(buf);
     ASSERT_NE(labelId, nullptr);
 
+    symTableDestruct();
     codeGenDestruct(state);
 }
 

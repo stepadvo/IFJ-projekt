@@ -12,6 +12,10 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+/** @brief if defined, the node creation functions won't take ownership of the
+ * pointers to strings */
+// #define IFJ_AST_NOOWN
+
 /**
  * @brief Identifies the specific type of an AST node.
  */
@@ -339,7 +343,8 @@ int addStatementToBlock(astNode *blockNode, astNode *statement);
 
 /**
  * @brief Creates a node for a function definition.
- * @param name The function's name. (The node takes ownership).
+ * @param name The function's name. (The node takes ownership unless
+ * IFJ_AST_NOOWN is defined).
  * @param isMain True if it's the main entry point.
  * @param params Array of parameters.
  * @param paramCount The number of items in the params array.
@@ -351,7 +356,8 @@ astNode *createFuncDefNode(char *name, bool isMain, astFuncParam *params,
 
 /**
  * @brief Creates a node for a variable declaration.
- * @param name The variable's name. (The node takes ownership).
+ * @param name The variable's name. (The node takes ownership unless
+ * IFJ_AST_NOOWN is defined).
  * @param isConstant True for 'val', false for 'var'.
  * @param explicitType The declared type, or UNKNOWN if not provided.
  * @param initializer The initial value expression. (The node takes ownership).
@@ -390,7 +396,7 @@ astNode *createWhileNode(astNode *condition, astNode *bodyBlock);
 /**
  * @brief Creates a range-based for loop node.
  * @param iteratorName The name of the loop variable. (The node takes
- * ownership).
+ * ownership unless IFJ_AST_NOOWN is defined).
  * @param start The starting bound.
  * @param end The ending bound.
  * @param endInclusive True if 'to' is used, false for 'until'.
@@ -430,14 +436,16 @@ astNode *createUnopNode(astUnopType op, astNode *operand);
 
 /**
  * @brief Creates an identifier reference node.
- * @param name The variable or parameter name. (The node takes ownership).
+ * @param name The variable or parameter name. (The node takes ownership unless
+ * IFJ_AST_NOOWN is defined).
  * @return A new AST_IDENTIFIER node.
  */
 astNode *createIdentifierNode(char *name);
 
 /**
  * @brief Creates a function call node.
- * @param name The name of the function to call. (The node takes ownership).
+ * @param name The name of the function to call. (The node takes ownership
+ * unless IFJ_AST_NOOWN is defined).
  * @return A new AST_FUNC_CALL node.
  */
 astNode *createFuncCallNode(char *name);
@@ -458,7 +466,8 @@ astNode *createUnitNode(void);
 
 /**
  * @brief Creates an assignment node to update an existing variable.
- * @param name The variable being updated. (The node takes ownership).
+ * @param name The variable being updated. (The node takes ownership unless
+ * IFJ_AST_NOOWN is defined).
  * @param value The new value expression. (The node takes ownership).
  * @return A new AST_ASSIGN node.
  */
@@ -481,7 +490,7 @@ astNode *createInt2DoubleNode(astNode *convertee);
 /**
  * @brief Recursively frees an AST node and all its children.
  * @param root The starting node to free. Also handles freeing associated
- * strings.
+ * strings unless IFJ_AST_NOOWN is defined.
  */
 void freeAst(astNode *root);
 
