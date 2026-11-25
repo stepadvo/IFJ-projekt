@@ -61,12 +61,7 @@ static LexerStatus lexerReadChar(Lexer *lexer, int *outChar) {
     if (character == EOF) {
         /* Distinguish a read error from normal EOF. */
         if (ferror(lexer->input)) {
-            setErrCode(LEXER_INTERNAL_ERROR);
-
-            fprintf(stderr,
-                    "Internal lexer error at %zu:%zu: input read failed.\n",
-                    lexer->line, lexer->column);
-
+            logErr(ERR_INTERNAL, lexer->line, lexer->column, LOGERR_NO_DETMSG);
             return LEXER_INTERNAL_ERROR;
         }
 
@@ -105,12 +100,7 @@ static LexerStatus lexerPeekChar(Lexer *lexer, int *outChar) {
     if (character == EOF) {
         /* Distinguish a read error from normal EOF. */
         if (ferror(lexer->input)) {
-            setErrCode(LEXER_INTERNAL_ERROR);
-
-            fprintf(stderr,
-                    "Internal lexer error at %zu:%zu: input read failed.\n",
-                    lexer->line, lexer->column);
-
+            logErr(ERR_INTERNAL, lexer->line, lexer->column, LOGERR_NO_DETMSG);
             return LEXER_INTERNAL_ERROR;
         }
 
@@ -118,12 +108,7 @@ static LexerStatus lexerPeekChar(Lexer *lexer, int *outChar) {
     }
 
     if (ungetc(character, lexer->input) == EOF) {
-        setErrCode(LEXER_INTERNAL_ERROR);
-
-        fprintf(stderr,
-                "Internal lexer error at %zu:%zu: character pushback failed.\n",
-                lexer->line, lexer->column);
-
+        logErr(ERR_INTERNAL, lexer->line, lexer->column, LOGERR_NO_DETMSG);
         return LEXER_INTERNAL_ERROR;
     }
 
@@ -247,13 +232,8 @@ static LexerStatus lexerReadIdentifier(Lexer *lexer, int firstCharacter,
     if (length == 1 && buffer[0] == '_') {
         free(buffer);
 
-        setErrCode(LEXER_ERROR);
-
-        fprintf(stderr,
-                "Lexical error at %zu:%zu: "
-                "standalone underscore is not an identifier.\n",
-                lexer->line, lexer->column - 1);
-
+        logErr(ERR_LEXER, lexer->line, lexer->column - 1,
+               "standalone underscore is not an identifier.\n");
         return LEXER_ERROR;
     }
 
@@ -265,12 +245,7 @@ static LexerStatus lexerReadIdentifier(Lexer *lexer, int firstCharacter,
 allocationError:
     free(buffer);
 
-    setErrCode(LEXER_INTERNAL_ERROR);
-
-    fprintf(stderr,
-            "Internal lexer error at %zu:%zu: "
-            "identifier buffer allocation failed.\n",
-            lexer->line, lexer->column);
+    logErr(ERR_INTERNAL, lexer->line, lexer->column, LOGERR_NO_DETMSG);
 
     return LEXER_INTERNAL_ERROR;
 }
@@ -305,11 +280,8 @@ static LexerStatus lexerAppendNumberChar(Lexer *lexer, char **buffer,
     return LEXER_OK;
 
 allocationError:
-    setErrCode(LEXER_INTERNAL_ERROR);
-    fprintf(stderr,
-            "Internal lexer error at %zu:%zu: "
-            "number buffer allocation failed.\n",
-            lexer->line, lexer->column);
+    logErr(ERR_INTERNAL, lexer->line, lexer->column, LOGERR_NO_DETMSG);
+
     return LEXER_INTERNAL_ERROR;
 }
 
@@ -478,16 +450,6 @@ static LexerStatus lexerReadNumber(Lexer *lexer, int firstCharacter,
         }
     }
 
-    status = lexerPeekChar(lexer, &character);
-    if (status != LEXER_OK) {
-        goto failure;
-    }
-
-    if (lexerIsDigit(character) || (character >= 'a' && character <= 'z') ||
-        (character >= 'A' && character <= 'Z') || character == '_') {
-        goto lexicalError;
-    }
-
     char *end;
     TokenAttribute attribute = {0};
     errno = 0;
@@ -520,9 +482,8 @@ lexicalError:
 failure:
     free(buffer);
     if (status == LEXER_ERROR) {
-        setErrCode(LEXER_ERROR);
-        fprintf(stderr, "Lexical error at %zu:%zu: invalid numeric literal.\n",
-                outToken->line, outToken->column);
+        logErr(ERR_LEXER, outToken->line, outToken->column,
+               "invalid numeric literal.\n");
     }
     return status;
 }
@@ -562,10 +523,9 @@ static LexerStatus lexerSkipBlockComment(Lexer *lexer,
         }
 
         if (character == EOF) {
-            setErrCode(LEXER_ERROR);
-            fprintf(stderr,
-                    "Lexical error at %zu:%zu: unterminated block comment.\n",
-                    commentStart->line, commentStart->column);
+            logErr(ERR_LEXER, commentStart->line, commentStart->column,
+                   "unterminated block comment.\n");
+
             return LEXER_ERROR;
         }
 
@@ -591,11 +551,8 @@ static LexerStatus lexerSkipBlockComment(Lexer *lexer,
             }
 
             if (depth == SIZE_MAX) {
-                setErrCode(LEXER_INTERNAL_ERROR);
-                fprintf(stderr,
-                        "Internal lexer error at %zu:%zu: "
-                        "block comment nesting is too deep.\n",
-                        lexer->line, lexer->column);
+                logErr(ERR_INTERNAL, lexer->line, lexer->column,
+                       LOGERR_NO_DETMSG);
                 return LEXER_INTERNAL_ERROR;
             }
 
@@ -637,11 +594,8 @@ static LexerStatus lexerAppendStringChar(Lexer *lexer, char **buffer,
     return LEXER_OK;
 
 allocationError:
-    setErrCode(LEXER_INTERNAL_ERROR);
-    fprintf(stderr,
-            "Internal lexer error at %zu:%zu: "
-            "string buffer allocation failed.\n",
-            lexer->line, lexer->column);
+    logErr(ERR_INTERNAL, lexer->line, lexer->column, LOGERR_NO_DETMSG);
+
     return LEXER_INTERNAL_ERROR;
 }
 
@@ -655,11 +609,9 @@ static LexerStatus lexerReadString(Lexer *lexer, Token *outToken) {
     size_t capacity = 32;
     char *buffer = malloc(capacity);
     if (buffer == NULL) {
-        setErrCode(LEXER_INTERNAL_ERROR);
-        fprintf(stderr,
-                "Internal lexer error at %zu:%zu: "
-                "string buffer allocation failed.\n",
-                outToken->line, outToken->column);
+        logErr(ERR_INTERNAL, outToken->line, outToken->column,
+               LOGERR_NO_DETMSG);
+
         return LEXER_INTERNAL_ERROR;
     }
     buffer[0] = '\0';
@@ -800,9 +752,7 @@ success:
 
 lexicalError:
     status = LEXER_ERROR;
-    setErrCode(LEXER_ERROR);
-    fprintf(stderr, "Lexical error at %zu:%zu: %s.\n", outToken->line,
-            outToken->column, errorMessage);
+    logErr(ERR_LEXER, outToken->line, outToken->column, "%s.\n", errorMessage);
 
 failure:
     free(buffer);
@@ -821,18 +771,15 @@ failure:
  */
 Lexer *lexerCreate(FILE *input) {
     if (input == NULL) {
-        setErrCode(LEXER_INTERNAL_ERROR);
+        logErr(ERR_INTERNAL, LOGERR_NO_POS, LOGERR_NO_POS, LOGERR_NO_DETMSG);
 
-        fprintf(stderr, "Internal lexer error: input stream is NULL.\n");
         return NULL;
     }
 
     Lexer *lexer = malloc(sizeof *lexer);
 
     if (lexer == NULL) {
-        setErrCode(LEXER_INTERNAL_ERROR);
-
-        fprintf(stderr, "Internal lexer error: lexer allocation failed.\n");
+        logErr(ERR_INTERNAL, LOGERR_NO_POS, LOGERR_NO_POS, LOGERR_NO_DETMSG);
         return NULL;
     }
 
@@ -924,12 +871,9 @@ LexerStatus getToken(Lexer *lexer, Token *outToken) {
         }
 
         if (requireLineEnd) {
-            setErrCode(LEXER_ERROR);
-            fprintf(stderr,
-                    "Lexical error at %zu:%zu: "
-                    "only whitespace may follow a multiline block comment "
-                    "on its closing line.\n",
-                    outToken->line, outToken->column);
+            logErr(ERR_LEXER, outToken->line, outToken->column,
+                   "only whitespace may follow a multiline block comment "
+                   "on its closing line.\n");
             return LEXER_ERROR;
         }
 
@@ -980,22 +924,16 @@ LexerStatus getToken(Lexer *lexer, Token *outToken) {
         if (lexer->leadingTabColumn != 0) {
             size_t tabColumn = lexer->leadingTabColumn;
             lexer->leadingTabColumn = 0;
-            setErrCode(LEXER_ERROR);
-            fprintf(stderr,
-                    "Lexical error at %zu:%zu: "
-                    "tab is not allowed in indentation.\n",
-                    outToken->line, tabColumn);
+            logErr(ERR_LEXER, outToken->line, tabColumn,
+                   "tab is not allowed in indentation.\n");
             return LEXER_ERROR;
         }
 
         if (startsPhysicalLine && lexer->parenDepth > 0 &&
             lexer->physicalIndent <= lexer->logicalIndent) {
-            setErrCode(LEXER_ERROR);
-            fprintf(stderr,
-                    "Lexical error at %zu:%zu: "
-                    "continuation line must be indented more than "
-                    "the first line of the logical line.\n",
-                    outToken->line, outToken->column);
+            logErr(ERR_LEXER, outToken->line, outToken->column,
+                   "continuation line must be indented more than "
+                   "the first line of the logical line.\n");
             return LEXER_ERROR;
         }
 
@@ -1145,11 +1083,8 @@ LexerStatus getToken(Lexer *lexer, Token *outToken) {
         }
 
         if (nextCharacter != character) {
-            setErrCode(LEXER_ERROR);
-
-            fprintf(stderr,
-                    "Lexical error at %zu:%zu: expected '%c' after '%c'.\n",
-                    outToken->line, outToken->column, character, character);
+            logErr(ERR_LEXER, outToken->line, outToken->column,
+                   "expected '%c' after '%c'.\n", character, character);
 
             return LEXER_ERROR;
         }
@@ -1267,9 +1202,8 @@ LexerStatus getToken(Lexer *lexer, Token *outToken) {
 
             break;
         }
-        setErrCode(LEXER_ERROR);
-        fprintf(stderr, "Lexical error at %zu:%zu: unexpected byte 0x%02X.\n",
-                outToken->line, outToken->column, (unsigned int)character);
+        logErr(ERR_LEXER, outToken->line, outToken->column,
+               "unexpected byte 0x%02X.\n", (unsigned int)character);
         return LEXER_ERROR;
     }
 
