@@ -62,6 +62,7 @@ static void checkMain(const astNode *root) {
 
     if (mainFunc->data.funcDef.paramCount != 0) {
         semError(5, "@main has a parameter");
+        return;
     }
 
     if (mainFunc->data.funcDef.explicitReturnType != UNKNOWN &&
@@ -110,7 +111,7 @@ void collectFunctionHeaders(astNode *root) {
             semError(4, "function redefinition");
         } else if (result != 0) {
 
-            semError(99, "symtable instert function failed");
+            semError(99, "symtable insert function failed");
         }
     }
 
