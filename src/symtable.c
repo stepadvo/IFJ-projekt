@@ -414,6 +414,8 @@ int locSymTableInit(vSymTable *table, int paramCount, paramData params[]) {
     table->tree = BSTInit();
     if (!table->tree) {
         // if the initialization is unsuccessfull
+        table->varArr = NULL;
+        table->varArrCapacity = 0;
         return -1;
     }
 
@@ -422,7 +424,7 @@ int locSymTableInit(vSymTable *table, int paramCount, paramData params[]) {
     if (paramCount > 0) {
         paramArr = malloc(sizeof(varDataPriv) * paramCount);
         if (!paramArr) {
-            BSTDestruct(table->tree);
+            BSTClear(table->tree);
             logErr(ERR_INTERNAL, LOGERR_NO_POS, LOGERR_NO_POS,
                    LOGERR_NO_DETMSG);
             return -1;
@@ -436,8 +438,10 @@ int locSymTableInit(vSymTable *table, int paramCount, paramData params[]) {
     for (int i = 0; i < paramCount; i++) {
         if (BSTInsert(table->tree, params[i].id, i, &key) != 0) {
             // if an insert is unsuccessfull
-            BSTDestruct(table->tree);
+            BSTClear(table->tree);
             free(paramArr);
+            table->varArr = NULL;
+            table->varArrCapacity = 0;
             return -1;
         }
         // set the unique ids as the parameter number
