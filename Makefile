@@ -8,6 +8,7 @@ VPATH=src:test:include
 
 #targets:
 #add the build targets here
+COMPILER=compiler
 #TEST_EXAMPLE = test_example
 TEST_BST = test_bst
 TEST_SYMTABLE = test_symtable
@@ -39,7 +40,7 @@ TEST_EXPRESSION_O = expression.o ast.o test_expression.o
 all: build
 
 build: $(OBJECTS)
-	$(CC) $(CFLAGS) -o compiler.out $(OBJECTS)
+	$(CC) $(CFLAGS) -o $(COMPILER).out $(OBJECTS)
 
 clean:
 	rm -f *.o *.out
@@ -52,7 +53,7 @@ test: $(foreach t,$(TEST_STEMS),$($(t))_build)
 
 printast:
 	$(MAKE) clean
-	$(MAKE) CFLAGS="$(CFLAGS) -DDEBUG_AST" all
+	$(MAKE) COMPILER="compiler_printast" OBJECTS="$(OBJECTS) ast_print.o" CFLAGS="$(CFLAGS) -DDEBUG_AST" all
 	rm -f *.o
 
 test_generator_function: generator.o test_generator_functional.o symtable.o errcode.o bst.o ast.o

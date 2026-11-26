@@ -239,8 +239,6 @@ static void printNodeSummary(const astNode *node) {
             fputs("Literal Unit: ()", stdout);
             break;
         default:
-            printf("Literal [%s]", tokenName(node->data.literal.litType,
-                                             (astBinopType){0}, false));
             break;
         }
         break;
