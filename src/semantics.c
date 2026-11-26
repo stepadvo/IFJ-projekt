@@ -19,7 +19,7 @@ codeGenState *state = NULL;
 
 void semError(int code, const char *msg) {
     setErrCode(code);
-    fprintf(stderr, "Semantic error (%d): %s\n", code, msg);
+    logErr(code, 0, 0, msg);
 }
 
 int semanticAnalyze(astNode *root) {

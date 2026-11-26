@@ -59,7 +59,7 @@ $($(1)): $($(1))_build
 	./$($(1)).out
 
 $($(1))_build: $($(1)_O)
-	$(CC) $(LDFLAGS) -o $($(1)).out $($(1)_O) 
+	$(CXX)  -o $($(1)).out $($(1)_O) $(LDFLAGS)
 endef
 
 $(foreach t,$(TEST_STEMS),$(eval $(call DEFINE_TEST_RULES,$(t))))
