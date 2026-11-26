@@ -38,6 +38,13 @@ typedef struct bufSection {
     struct bufSection *next; /** ptr to the next node */
 } bufSection;
 
+/** @brief info needed only when generating a for loop guard*/
+typedef struct {
+    bool generatingForGuard;
+    char *guardIteratorName;
+    int guardIteratorUqId;
+} codeGenGuardInfo;
+
 /** @brief buffer for keeping the generated code blocks */
 typedef struct codeGenBufNode {
     /** linked list of sections */
@@ -46,10 +53,11 @@ typedef struct codeGenBufNode {
     int totalSize; /** redundant data. Useful for getting the total size faster
                     */
     int labelNum;  /** the number given to a statement needing labels so the
-                      label names are identical (works if one buffer is analogous
-                      to one source code block) */
+                      label names are unique(works if one buffer is analogous to
+                      one source code block) */
 
     bool leftVal; /** set to true if the block left value on stack */
+    codeGenGuardInfo guardGen;
 
     struct codeGenBufNode *nextBuf;
     struct codeGenBufNode *prevBuf;
@@ -242,6 +250,27 @@ int codeGenInsertBufToTxt(codeGenState *state, codeGenBufNode *destBuf,
  * @return the number of outputted bytes
  */
 int codeGenOutputBuf(char *outBuf, codeGenBufNode *buffer);
+
+/**
+ * @brief inserts a variable definition into the buffer
+ *
+ * @param name name of the var in source code (ast)
+ * @param uqId unique ID of the variable (collected from symTable)
+ *
+ * @return 0 on success, else -1
+ */
+int codeGenInsertVarDef(const char *name, int uqId, codeGenBufNode *buffer);
+
+/**
+ * @brief inserts variable definitions for all the variables defined in the
+ * tree
+ *
+ * @detail all the variables must have their uniqueId set in the ast (their
+ * value must not be -1)
+ *
+ * @return 0 on success, else -1
+ */
+int codeGenVariables(astNode *root, codeGenBufNode *buffer);
 
 /**
  * @brief generates an array of statements (nodes of ast) to a buffer
@@ -447,7 +476,10 @@ int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer,
 /**
  * @brief assembles the name of a variable in IFJcode26
  *
+ * @param buffer a non NULL ptr to the buffer we are generating in
  * @param id the name in IFJ26 to be translated
+ * @param uqIdP if not NULL, the unique id of the variable will be saved to
+ * *uqIdP
  *
  * @return ptr to the name in IFJcode26
  *
@@ -459,7 +491,8 @@ int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer,
  *
  * (the variable name is redundant, but simplifies debugging)
  */
-const char *codeGenGetVarName(const char *id);
+const char *codeGenGetVarName(codeGenBufNode *buffer, const char *id,
+                              int *uqIdP);
 
 /**
  * @brief assembles a unique label name

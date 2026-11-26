@@ -114,6 +114,13 @@ TEST_F(CodeGeneratorTest, BufferOperations) {
     EXPECT_NE(strstr(outBuf, "MOVE LF@x$1 int@42"), nullptr);
 
     // Test removing buffer from state and destroying it separately
+    bufSection *curr = buf->firstSection;
+    bufSection *next;
+    while (curr) {
+        next = curr->next;
+        free(curr);
+        curr = next;
+    }
     codeGenRemoveBuf(state, buf);
     EXPECT_EQ(state->firstBuf, nullptr);
     EXPECT_EQ(state->lastBuf, nullptr);
@@ -146,6 +153,10 @@ TEST_F(CodeGeneratorTest, ErrorHandlingNulls) {
  * @brief Tests utility helpers like variable naming and label generation.
  */
 TEST_F(CodeGeneratorTest, UtilityFunctions) {
+    codeGenState *state = codeGenInit();
+    ASSERT_NE(state, nullptr);
+    codeGenBufNode *buf = codeGenCreateAndInsertBuf(state);
+    ASSERT_NE(buf, nullptr);
     // Test variable name assembly
     if (symTableInit() == -1) {
         return;
@@ -154,17 +165,16 @@ TEST_F(CodeGeneratorTest, UtilityFunctions) {
     symTableActivateFun("hello");
     beginBlock();
     symTableInsertVar("counter", INT, false);
-    const char *varName = codeGenGetVarName("counter");
+    const char *varName = codeGenGetVarName(buf, "counter", NULL);
     ASSERT_NE(varName, nullptr);
     EXPECT_EQ(strncmp(varName, "LF@counter", 10), 0);
 
     // Test label ID generation
-    codeGenState *state = codeGenInit();
-    codeGenBufNode *buf = codeGenCreateAndInsertBuf(state);
 
     const char *labelId = codeGenGetLabelId(buf);
     ASSERT_NE(labelId, nullptr);
 
+    symTableDestruct();
     codeGenDestruct(state);
 }
 

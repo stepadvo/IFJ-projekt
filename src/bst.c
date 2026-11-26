@@ -35,7 +35,7 @@ struct Bst_s {
 bst_t *BSTInit(void) {
     bst_t *temp = malloc(sizeof(bst_t));
     if (!temp) {
-        setErrCode(99);
+        logErr(ERR_INTERNAL, LOGERR_NO_POS, LOGERR_NO_POS, LOGERR_NO_DETMSG);
         return NULL;
     }
 
@@ -79,14 +79,14 @@ void BSTClear(bst_t *tree) {
 bstNode_t *createNode(const char *key, size_t data, int *err, char **keyPtr) {
     bstNode_t *temp = malloc(sizeof(bstNode_t));
     if (!temp) {
-        setErrCode(99);
+        logErr(ERR_INTERNAL, LOGERR_NO_POS, LOGERR_NO_POS, LOGERR_NO_DETMSG);
         *err = -1;
         return NULL;
     }
 
     char *tempKey = malloc(strlen(key) + 1);
     if (!tempKey) {
-        setErrCode(99);
+        logErr(ERR_INTERNAL, LOGERR_NO_POS, LOGERR_NO_POS, LOGERR_NO_DETMSG);
         free(temp);
         *err = -1;
         return NULL;
@@ -158,8 +158,8 @@ bstNode_t *rotateRight(bstNode_t *node) {
  *  T2 T3    T1 T2
  */
 bstNode_t *rotateLeft(bstNode_t *node) {
-    bstNode_t *rChild = node->left;
-    bstNode_t *rlChild = rChild->right;
+    bstNode_t *rChild = node->right;
+    bstNode_t *rlChild = rChild->left;
 
     node->right = rlChild;
     rChild->left = node;
@@ -200,7 +200,7 @@ bstNode_t *BSTBalanceTree(bstNode_t *node) {
             return rotateLeft(node);
         } else {
             // RL situation
-            node->right = rotateRight(node->left);
+            node->right = rotateRight(node->right);
             return rotateLeft(node);
         }
     }
@@ -216,7 +216,11 @@ bstNode_t *BSTBalanceTree(bstNode_t *node) {
 bstNode_t *BSTInsert_R(bstNode_t *root, const char *key, size_t data, int *err,
                        char **keyPtr) {
     if (!root) {
-        return createNode(key, data, err, keyPtr);
+        bstNode_t *node = createNode(key, data, err, keyPtr);
+        if (!node) {
+            *err = -1;
+        }
+        return node;
     }
     int result = strcmp(key, root->key);
     if (result < 0) {
@@ -283,7 +287,7 @@ bstNode_t *BSTRemove_R(bstNode_t *root, const char *key, size_t *oldData,
                        int *err) {
     if (!root) {
         // node not found
-        *err = -1;
+        *err = -2;
         return NULL;
     }
 
@@ -302,7 +306,25 @@ bstNode_t *BSTRemove_R(bstNode_t *root, const char *key, size_t *oldData,
             // find the maximum in left subroot, replace the root with it and
             // delete it
             bstNode_t *maxLeft = BSTMax(root->left);
-            root->key = maxLeft->key;
+
+            // copy the key into the root
+            size_t strlenMaxLeftKey = strlen(maxLeft->key);
+            if (strlenMaxLeftKey <= strlen(root->key)) {
+                // if the root key is bigger, just copy over the maxLeft->key
+                memcpy(root->key, maxLeft->key, strlenMaxLeftKey + 1);
+            } else {
+                // create a duplicate of maxLeft->key
+                free(root->key);
+                char *tempKey = malloc(strlenMaxLeftKey + 1);
+                if (!tempKey) {
+                    logErr(ERR_INTERNAL, -1, -1, NULL);
+                    *err = -1;
+                    return root;
+                }
+                memcpy(tempKey, maxLeft->key, strlenMaxLeftKey + 1);
+                root->key = tempKey;
+            }
+            // copy the data
             root->data = maxLeft->data;
 
             size_t discard;
@@ -353,7 +375,7 @@ int BSTRemove(bst_t *tree, const char *key, size_t *oldData) {
     if (!oldData) {
         oldData = &discard;
     }
-    BSTRemove_R(tree->root, key, oldData, &errcode);
+    tree->root = BSTRemove_R(tree->root, key, oldData, &errcode);
     return errcode;
 }
 
