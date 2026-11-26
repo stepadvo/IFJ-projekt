@@ -663,10 +663,14 @@ static astNode *parseExpressionFromValue(astNode *firstValue,
 
     size_t openParens = 0;
     bool expectsOperand = firstValue == NULL;
+    bool endAfterBlockIf = false;
 
     while (true) {
+        /** parseIf() may already have consumed the newline after a block */
         ExprSymbol input =
-            expressionInputSymbol(expectsOperand, openParens, stops);
+            endAfterBlockIf && openParens == 0
+                ? EXPR_END
+                : expressionInputSymbol(expectsOperand, openParens, stops);
         const ExprStackItem *terminal = exprStackTopTerminal(&stack);
         if (terminal == NULL || input == EXPR_INVALID) {
             syntaxError("invalid expression");
@@ -678,18 +682,29 @@ static astNode *parseExpressionFromValue(astNode *firstValue,
         if (action == PREC_SHIFT) {
             ExprStackItem item = {.symbol = input,
                                   .tokenType = currentToken.type};
+
             if (input == EXPR_VALUE) {
+                bool isIf = currentToken.type == TOKEN_KW_IF;
+                size_t ifLine = currentToken.line;
+                size_t ifIndent = currentLineIndent;
+
                 int exprValNodErr;
                 item.node = expressionValueNode(stops, &exprValNodErr);
+
                 if (item.node == NULL) {
-                    // check for err
-                    if (exprValNodErr != 0) {
-                        return NULL;
+                    if (exprValNodErr == 0 && ERRCODE == 0) {
+                        syntaxError("expected value");
                     }
-                    syntaxError("expected value");
                     break;
                 }
+
+                if (isIf && openParens == 0 && currentToken.startsLogicalLine &&
+                    currentToken.line > ifLine &&
+                    currentToken.indent <= ifIndent) {
+                    endAfterBlockIf = true;
+                }
             }
+
             /** values advance inside expressionValueNode() */
             if (input != EXPR_VALUE && !advance()) {
                 break;
@@ -712,7 +727,8 @@ static astNode *parseExpressionFromValue(astNode *firstValue,
             if (!reduceParentheses(&stack, &reduceParenErr)) {
                 // check if err occured
                 if (reduceParenErr != 0) {
-                    return NULL;
+                    break; // return NULL -> break [would skip
+                           // exprStackDestroy(&stack)]
                 }
                 syntaxError("invalid parentheses");
                 break;
@@ -1128,6 +1144,7 @@ static astNode *parseFor(size_t indent, ExpressionStops stops) {
     }
     freeAst(forNode->data.forStmt.body);
     forNode->data.forStmt.body = body;
+    body->data.block.parentIfForBody = forNode;
     return forNode;
 }
 
@@ -1230,15 +1247,16 @@ static astNode *parseBlock(size_t parentIndent) {
         if (statement == NULL) {
             break;
         }
-        if (addStatementToBlock(block, statement) != -2) {
-            break;
+        if (addStatementToBlock(block, statement) != 0) {
+            freeAst(statement);
+            freeAst(block);
+            return NULL;
         }
 
-        /** completed control blocks already point to the next statement */
-        if ((statement->type == AST_IF || statement->type == AST_WHILE ||
-             statement->type == AST_FOR) &&
-            currentToken.type != TOKEN_NEWLINE &&
-            currentToken.type != TOKEN_SEMICOLON) {
+        /** a nested block may have consumed the separating newline */
+        if (currentToken.type != TOKEN_NEWLINE &&
+            currentToken.type != TOKEN_SEMICOLON &&
+            currentToken.startsLogicalLine) {
             afterSemicolon = false;
             continue;
         }
@@ -1381,7 +1399,8 @@ static astNode *parseFunctionDef(bool isMain) {
 
     if (!isBlock) {
         if (currentToken.type != TOKEN_NEWLINE &&
-            currentToken.type != TOKEN_EOF) {
+            currentToken.type != TOKEN_EOF &&
+            !(currentToken.startsLogicalLine && currentToken.indent == 0)) {
             syntaxError("expected end of function body");
             freeAst(body);
             freeParameters(params, paramCount);
