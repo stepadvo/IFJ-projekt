@@ -131,7 +131,7 @@ codeGenState *codeGenInit() {
     static char readIntBuiltin[] = "LABEL readInt\n"
                                    "READ GF@G1 int\n"
                                    "TYPE GF@G2 GF@G1\n"
-                                   "JUMPIFNEQ readInt$nil GF@G1 string@nil\n"
+                                   "JUMPIFNEQ readInt$nil GF@G2 string@nil\n"
                                    // if the result of READ isn't nil
                                    "PUSHS GF@G1\n"
                                    "RETURN\n"
@@ -145,7 +145,7 @@ codeGenState *codeGenInit() {
         "LABEL readDouble\n"
         "READ GF@G1 float\n"
         "TYPE GF@G2 GF@G1\n"
-        "JUMPIFNEQ readDouble$nil GF@G1 string@nil\n"
+        "JUMPIFNEQ readDouble$nil GF@G2 string@nil\n"
         // if the result of READ isn't nil
         "PUSHS GF@G1\n"
         "RETURN\n"
@@ -1362,6 +1362,13 @@ int codeGenBuiltinFunCall(astNode *funcCall, codeGenBufNode *buffer,
         // generate a call
         state->builtinNeeded[FUN_READDOUBLE] = true;
         return 1;
+    }
+    if (strcmp(name, "readBoolean") == 0) {
+        IFJ_GEN_TRY(codeGenInsertTxt("READ GF@G1 bool\n"
+                                     "PUSHS GF@G1\n",
+                                     buffer),
+                    -1);
+        return 0;
     }
     if (strcmp(name, "toStr") == 0) {
         // decide on what to use depending on the parameter typ
