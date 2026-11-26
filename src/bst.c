@@ -317,7 +317,7 @@ bstNode_t *BSTRemove_R(bstNode_t *root, const char *key, size_t *oldData,
                 free(root->key);
                 char *tempKey = malloc(strlenMaxLeftKey + 1);
                 if (!tempKey) {
-                    setErrCode(99);
+                    logErr(ERR_INTERNAL, -1, -1, NULL);
                     *err = -1;
                     return root;
                 }

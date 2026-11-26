@@ -349,7 +349,7 @@ void freeAst(astNode *node) {
         FREEOWN(node->data.identifier.name);
         break;
     case AST_INT2DOUBLE:
-        free(node->data.int2doubleConv.value);
+        freeAst(node->data.int2doubleConv.value);
         break;
     }
 
