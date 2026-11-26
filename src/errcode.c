@@ -58,8 +58,8 @@ void logErr(errType type, size_t line, size_t column,
     }
 
     // decide whether line and column are shown and
-    if (line == 0) {
-        if (column == 0) {
+    if (line != 0) {
+        if (column != 0) {
             fprintf(stderr, "%s:%lu:%lu: %s\n", __FILE_NAME__, line, column,
                     message);
         } else {
