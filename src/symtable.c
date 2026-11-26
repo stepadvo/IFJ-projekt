@@ -142,7 +142,8 @@ int symTableInsertFun(const char *id, varType retType, int paramCount,
 
         if (!newArr) {
             // memory allocation err
-            setErrCode(99);
+            logErr(ERR_INTERNAL, LOGERR_NO_POS, LOGERR_NO_POS,
+                   LOGERR_NO_DETMSG);
             // remove the function from the tree
             BSTRemove(gFunctionTable.tree, id, NULL);
             return -1;
@@ -410,18 +411,24 @@ int symTableBlockDepth(void) {
 
 // helper function implementations
 int locSymTableInit(vSymTable *table, int paramCount, paramData params[]) {
-    // initialize the 0-th block (used for parameters)
-    varDataPriv *paramArr = malloc(sizeof(varDataPriv) * paramCount);
-    if (!paramArr) {
-        setErrCode(99);
-        return -1;
-    }
-
     table->tree = BSTInit();
     if (!table->tree) {
         // if the initialization is unsuccessfull
-        free(paramArr);
         return -1;
+    }
+
+    // initialize the 0-th block (used for parameters)
+    varDataPriv *paramArr;
+    if (paramCount > 0) {
+        paramArr = malloc(sizeof(varDataPriv) * paramCount);
+        if (!paramArr) {
+            BSTDestruct(table->tree);
+            logErr(ERR_INTERNAL, LOGERR_NO_POS, LOGERR_NO_POS,
+                   LOGERR_NO_DETMSG);
+            return -1;
+        }
+    } else {
+        paramArr = NULL;
     }
 
     // insert the parameters into the 0-th block
@@ -448,8 +455,13 @@ int locSymTableInit(vSymTable *table, int paramCount, paramData params[]) {
 }
 
 void locSymTableDestruct(vSymTable *table) {
+    if (!table) {
+        return;
+    }
     BSTDestruct(table->tree);
-    free(table->varArr);
+    if (table->varArr) {
+        free(table->varArr);
+    }
 }
 
 funDataPriv *getFun(bool active, const char *id) {
@@ -491,7 +503,8 @@ int locTableInsertVar(vSymTable *locTable, varDataPriv data) {
         }
 
         if (!newArr) {
-            setErrCode(99);
+            logErr(ERR_INTERNAL, LOGERR_NO_POS, LOGERR_NO_POS,
+                   LOGERR_NO_DETMSG);
             return -1;
         }
 

@@ -35,7 +35,7 @@ struct Bst_s {
 bst_t *BSTInit(void) {
     bst_t *temp = malloc(sizeof(bst_t));
     if (!temp) {
-        setErrCode(99);
+        logErr(ERR_INTERNAL, LOGERR_NO_POS, LOGERR_NO_POS, LOGERR_NO_DETMSG);
         return NULL;
     }
 
@@ -79,14 +79,14 @@ void BSTClear(bst_t *tree) {
 bstNode_t *createNode(const char *key, size_t data, int *err, char **keyPtr) {
     bstNode_t *temp = malloc(sizeof(bstNode_t));
     if (!temp) {
-        setErrCode(99);
+        logErr(ERR_INTERNAL, LOGERR_NO_POS, LOGERR_NO_POS, LOGERR_NO_DETMSG);
         *err = -1;
         return NULL;
     }
 
     char *tempKey = malloc(strlen(key) + 1);
     if (!tempKey) {
-        setErrCode(99);
+        logErr(ERR_INTERNAL, LOGERR_NO_POS, LOGERR_NO_POS, LOGERR_NO_DETMSG);
         free(temp);
         *err = -1;
         return NULL;
@@ -317,7 +317,7 @@ bstNode_t *BSTRemove_R(bstNode_t *root, const char *key, size_t *oldData,
                 free(root->key);
                 char *tempKey = malloc(strlenMaxLeftKey + 1);
                 if (!tempKey) {
-                    setErrCode(99);
+                    logErr(ERR_INTERNAL, -1, -1, NULL);
                     *err = -1;
                     return root;
                 }
