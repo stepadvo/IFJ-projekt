@@ -228,6 +228,27 @@ TEST_F(LexerTest, NumericValuesAndDotLookahead) {
     text("toString");
     ASSERT_NO_FATAL_FAILURE(sequence({TOKEN_MINUS, TOKEN_INT_LITERAL}));
     EXPECT_EQ(token.attribute.intValue, 1);
+
+    const struct {
+        const char *source;
+        TokenType numberType;
+        const char *identifier;
+        size_t identifierColumn;
+    } boundaries[] = {{"123abc", TOKEN_INT_LITERAL, "abc", 4},
+                      {"42d", TOKEN_INT_LITERAL, "d", 3},
+                      {"1.5foo", TOKEN_DOUBLE_LITERAL, "foo", 4},
+                      {"1e2abc", TOKEN_DOUBLE_LITERAL, "abc", 4},
+                      {"1.5dd", TOKEN_DOUBLE_LITERAL, "d", 5}};
+
+    for (const auto &item : boundaries) {
+        SCOPED_TRACE(item.source);
+        ASSERT_NO_FATAL_FAILURE(open(item.source));
+        ASSERT_TRUE(next(item.numberType));
+        ASSERT_TRUE(next(TOKEN_IDENTIFIER));
+        text(item.identifier);
+        EXPECT_EQ(token.column, item.identifierColumn);
+        ASSERT_NO_FATAL_FAILURE(sequence({TOKEN_NEWLINE, TOKEN_EOF}));
+    }
 }
 
 TEST_F(LexerTest, OrdinaryAndMultilineStrings) {
@@ -322,8 +343,6 @@ TEST_F(LexerTest, InvalidInputs) {
                            "1e+",
                            "1e_2",
                            "1.2_",
-                           "42d",
-                           "123abc",
                            "9223372036854775808",
                            "1e9999"};
     for (const char *source : cases) {

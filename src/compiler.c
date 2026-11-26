@@ -24,11 +24,7 @@ int main(int argc, char *argv[]) {
     freeAst(root);
 
     if (ERRCODE != EXIT_SUCCESS) {
-        fprintf(stderr, "\
-==================================\n\
- Compilation ended unsuccessfully.\n\
-==================================\n\
-");
+        fprintf(stderr, "Compilation terminated\n");
     }
 
     return ERRCODE;
