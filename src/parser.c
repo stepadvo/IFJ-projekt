@@ -27,18 +27,13 @@ static size_t currentLineIndent = 0;
 static bool advance(void) {
     LexerStatus status = getToken(lexer, &currentToken);
 
-    /** set lexer/internal error */
-    if (status == LEXER_OK) {
-        if (currentToken.startsLogicalLine)
-            currentLineIndent = currentToken.indent;
-        return true;
-    }
-    if (status == LEXER_INTERNAL_ERROR)
-        setErrCode(99);
-    else
-        setErrCode(1);
+    /** the lexer reports its own errors through logErr() */
+    if (status != LEXER_OK)
+        return false;
 
-    return false;
+    if (currentToken.startsLogicalLine)
+        currentLineIndent = currentToken.indent;
+    return true;
 }
 
 /**
@@ -46,11 +41,7 @@ static bool advance(void) {
  * @param message Error message to print.
  */
 static void syntaxError(const char *message) {
-    fprintf(stderr, "Syntax error at line %zu: %s\n", currentToken.line,
-            message);
-    setErrCode(2);
-
-    return;
+    logErr(ERR_SYNTAX, currentToken.line, currentToken.column, "%s\n", message);
 }
 
 /**
@@ -622,10 +613,14 @@ static astNode *parseExpressionFromValue(astNode *firstValue,
 
     size_t openParens = 0;
     bool expectsOperand = firstValue == NULL;
+    bool endAfterBlockIf = false;
 
     while (true) {
+        /** parseIf() may already have consumed the newline after a block */
         ExprSymbol input =
-            expressionInputSymbol(expectsOperand, openParens, stops);
+            endAfterBlockIf && openParens == 0
+                ? EXPR_END
+                : expressionInputSymbol(expectsOperand, openParens, stops);
         const ExprStackItem *terminal = exprStackTopTerminal(&stack);
         if (terminal == NULL || input == EXPR_INVALID) {
             syntaxError("invalid expression");
@@ -638,10 +633,18 @@ static astNode *parseExpressionFromValue(astNode *firstValue,
             ExprStackItem item = {.symbol = input,
                                   .tokenType = currentToken.type};
             if (input == EXPR_VALUE) {
+                bool isIf = currentToken.type == TOKEN_KW_IF;
+                size_t ifLine = currentToken.line;
+                size_t ifIndent = currentLineIndent;
                 item.node = expressionValueNode(stops);
                 if (item.node == NULL) {
                     syntaxError("expected value");
                     break;
+                }
+                if (isIf && openParens == 0 && currentToken.startsLogicalLine &&
+                    currentToken.line > ifLine &&
+                    currentToken.indent <= ifIndent) {
+                    endAfterBlockIf = true;
                 }
             }
             /** values advance inside expressionValueNode() */
@@ -1058,6 +1061,7 @@ static astNode *parseFor(size_t indent, ExpressionStops stops) {
     }
     freeAst(forNode->data.forStmt.body);
     forNode->data.forStmt.body = body;
+    body->data.block.parentIfForBody = forNode;
     return forNode;
 }
 
@@ -1159,11 +1163,10 @@ static astNode *parseBlock(size_t parentIndent) {
         }
         addStatementToBlock(block, statement);
 
-        /** completed control blocks already point to the next statement */
-        if ((statement->type == AST_IF || statement->type == AST_WHILE ||
-             statement->type == AST_FOR) &&
-            currentToken.type != TOKEN_NEWLINE &&
-            currentToken.type != TOKEN_SEMICOLON) {
+        /** a nested block may have consumed the separating newline */
+        if (currentToken.type != TOKEN_NEWLINE &&
+            currentToken.type != TOKEN_SEMICOLON &&
+            currentToken.startsLogicalLine) {
             afterSemicolon = false;
             continue;
         }
@@ -1303,7 +1306,8 @@ static astNode *parseFunctionDef(bool isMain) {
 
     if (!isBlock) {
         if (currentToken.type != TOKEN_NEWLINE &&
-            currentToken.type != TOKEN_EOF) {
+            currentToken.type != TOKEN_EOF &&
+            !(currentToken.startsLogicalLine && currentToken.indent == 0)) {
             syntaxError("expected end of function body");
             freeAst(body);
             freeParameters(params, paramCount);
@@ -1338,7 +1342,7 @@ static astNode *parseFunctionDef(bool isMain) {
         freeAst(body);
         freeParameters(params, paramCount);
         free(name);
-        setErrCode(99);
+        logErr(ERR_INTERNAL, LOGERR_NO_POS, LOGERR_NO_POS, LOGERR_NO_DETMSG);
         return NULL;
     }
 
@@ -1355,11 +1359,9 @@ astNode *parse(void) {
     currentToken = (Token){0};
     currentLineIndent = 0;
     lexer = lexerCreate(stdin);
-    if (lexer == NULL) {
-        fprintf(stderr, "Internal error: could not create lexer\n");
-        setErrCode(99);
+    /** lexerCreate() already reports initialization errors */
+    if (lexer == NULL)
         return NULL;
-    }
     astNode *root = NULL;
 
     /** parse all functions after import */
