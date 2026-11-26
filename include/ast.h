@@ -103,6 +103,8 @@ struct astNode {
      */
     varType resultType;
 
+    size_t line;
+
     union {
         /**
          * @brief Represents the entire parsed program.
@@ -319,6 +321,11 @@ struct astNode {
  * Exits the program with code 99 if the pointer is NULL.
  */
 void checkMalloc(void *ptr);
+
+/**
+ * @brief Adds a line number to the node.
+ */
+void addLineToNode(astNode *node, size_t line);
 
 /**
  * @brief Initializes a new program root node.

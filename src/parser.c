@@ -8,6 +8,7 @@
  */
 
 #include "parser.h"
+#include "ast.h"
 #include "compiler.h"
 #include "expression.h"
 #include "lexer.h"
@@ -249,6 +250,7 @@ static bool isIdentifierWord(const char *word) {
  */
 static astNode *parseFunctionCall(char *name) {
     astNode *call = createFuncCallNode(name);
+    addLineToNode(call, currentToken.line);
     if (call == NULL) {
         free(name);
         return NULL;
@@ -304,6 +306,7 @@ static astNode *parseIdentifierValue(char *name) {
         return parseFunctionCall(name);
     }
     astNode *node = createIdentifierNode(name);
+    addLineToNode(node, currentToken.line);
     if (node == NULL) {
         free(name);
     }
@@ -415,6 +418,7 @@ static astNode *expressionValueNode(ExpressionStops stops) {
     }
 
     astNode *node = createLiteralNode(&currentToken);
+    addLineToNode(node, currentToken.line);
     if (node != NULL && !advance()) {
         freeAst(node);
         return NULL;
@@ -527,6 +531,7 @@ static bool reduceExpression(ExprStack *stack) {
             return false;
         }
         astNode *node = createUnopNode(unOp, last->node);
+        addLineToNode(node, currentToken.line);
         if (node == NULL) {
             return false;
         }
@@ -549,6 +554,7 @@ static bool reduceExpression(ExprStack *stack) {
         return false;
     }
     astNode *node = createBinopNode(binOp, left->node, last->node);
+    addLineToNode(node, currentToken.line);
     if (node == NULL) {
         return false;
     }
@@ -574,8 +580,10 @@ static bool reduceParentheses(ExprStack *stack) {
     /** () is the Unit value */
     if (stack->items[count - 1].symbol == EXPR_LPAREN) {
         stack->count--;
-        exprStackPush(stack, (ExprStackItem){.symbol = EXPR_NONTERMINAL,
-                                             .node = createUnitNode()});
+        astNode *unit = createUnitNode();
+        addLineToNode(unit, currentToken.line);
+        exprStackPush(
+            stack, (ExprStackItem){.symbol = EXPR_NONTERMINAL, .node = unit});
         return true;
     }
 
@@ -747,6 +755,8 @@ static astNode *parseVarDef(bool isConstant, ExpressionStops stops) {
         return NULL;
     }
     astNode *node = createVarDefNode(name, isConstant, type, value);
+    addLineToNode(node, currentToken.line);
+
     if (node == NULL) {
         free(name);
         freeAst(value);
@@ -756,6 +766,8 @@ static astNode *parseVarDef(bool isConstant, ExpressionStops stops) {
 
 /** @brief Parses a return statement. @return Return AST, or NULL on error. */
 static astNode *parseReturn(ExpressionStops stops) {
+    astNode *node = createReturnNode(NULL);
+    addLineToNode(node, currentToken.line);
     if (!advance()) {
         return NULL;
     }
@@ -764,13 +776,14 @@ static astNode *parseReturn(ExpressionStops stops) {
         currentToken.type == TOKEN_SEMICOLON ||
         currentToken.type == TOKEN_EOF ||
         (stops.stopAtElse && currentToken.type == TOKEN_KW_ELSE)) {
-        return createReturnNode(NULL);
+        return node;
     }
     astNode *value = parseExpressionWithStops(stops);
     if (value == NULL) {
         return NULL;
     }
-    return createReturnNode(value);
+    node->data.returnStmt.value = value;
+    return node;
 }
 
 /**
@@ -795,6 +808,7 @@ static astNode *parseBody(size_t indent, bool isExpression,
         return NULL;
 
     astNode *body = createBlockNode();
+    addLineToNode(body, currentToken.line);
     if (addStatementToBlock(body, statement) != 0) {
         freeAst(statement);
         freeAst(body);
@@ -812,6 +826,7 @@ static astNode *parseBody(size_t indent, bool isExpression,
  */
 static astNode *parseIf(size_t indent, bool isExpression,
                         ExpressionStops stops) {
+    size_t line = currentToken.line;
     if (!match(TOKEN_KW_IF, "expected 'if'"))
         return NULL;
 
@@ -854,6 +869,7 @@ static astNode *parseIf(size_t indent, bool isExpression,
             astNode *nested = parseIf(indent, isExpression, stops);
             if (nested != NULL) {
                 elseBlock = createBlockNode();
+                addLineToNode(elseBlock, currentToken.line);
                 addStatementToBlock(elseBlock, nested);
             }
         } else {
@@ -872,6 +888,7 @@ static astNode *parseIf(size_t indent, bool isExpression,
     }
 
     astNode *node = createIfNode(condition, thenBlock, elseBlock);
+    addLineToNode(node, line);
     if (node == NULL) {
         freeAst(condition);
         freeAst(thenBlock);
@@ -887,6 +904,7 @@ static astNode *parseIf(size_t indent, bool isExpression,
  * @return While AST, or NULL on error.
  */
 static astNode *parseWhile(size_t indent, ExpressionStops stops) {
+    size_t line = currentToken.line;
     if (!match(TOKEN_KW_WHILE, "expected 'while'"))
         return NULL;
 
@@ -906,6 +924,7 @@ static astNode *parseWhile(size_t indent, ExpressionStops stops) {
     }
 
     astNode *node = createWhileNode(condition, body);
+    addLineToNode(node, line);
     if (node == NULL) {
         freeAst(condition);
         freeAst(body);
@@ -920,6 +939,7 @@ static astNode *parseWhile(size_t indent, ExpressionStops stops) {
  * @return For AST, or NULL on error.
  */
 static astNode *parseFor(size_t indent, ExpressionStops stops) {
+    size_t line = currentToken.line;
     if (!match(TOKEN_KW_FOR, "expected 'for'"))
         return NULL;
 
@@ -999,8 +1019,10 @@ static astNode *parseFor(size_t indent, ExpressionStops stops) {
 
     /** create the node before guards so it owns every parsed value */
     astNode *emptyBody = createBlockNode();
+    addLineToNode(emptyBody, currentToken.line);
     astNode *forNode =
         createForNode(name, start, end, inclusive, step, emptyBody);
+    addLineToNode(forNode, line);
     if (forNode == NULL) {
         freeAst(emptyBody);
         free(name);
@@ -1103,6 +1125,7 @@ static astNode *parseStatement(size_t indent, ExpressionStops stops) {
                 return NULL;
             }
             astNode *node = createAssignNode(name, value);
+            addLineToNode(node, currentToken.line);
             if (node == NULL) {
                 free(name);
                 freeAst(value);
@@ -1134,6 +1157,7 @@ static astNode *parseBlock(size_t parentIndent) {
 
     size_t indent = currentToken.indent;
     astNode *block = createBlockNode();
+    addLineToNode(block, currentToken.line);
     bool afterSemicolon = false;
 
     while (currentToken.type != TOKEN_EOF) {
@@ -1250,6 +1274,7 @@ static bool parseMainAnnotation(bool *isMain) {
  * @return Function node, or NULL on error.
  */
 static astNode *parseFunctionDef(bool isMain) {
+    size_t line = currentToken.line;
     if (!match(TOKEN_KW_DEF, "expected 'def'")) {
         return NULL;
     }
@@ -1325,6 +1350,7 @@ static astNode *parseFunctionDef(bool isMain) {
     /** wrap single-line expressions in a block */
     if (!isBlock) {
         astNode *block = createBlockNode();
+        addLineToNode(block, currentToken.line);
         if (addStatementToBlock(block, body) != 0) {
             freeAst(block);
             freeAst(body);
@@ -1338,6 +1364,7 @@ static astNode *parseFunctionDef(bool isMain) {
     /** build function AST */
     astNode *function =
         createFuncDefNode(name, isMain, params, paramCount, body);
+    addLineToNode(function, line);
     if (function == NULL) {
         freeAst(body);
         freeParameters(params, paramCount);
