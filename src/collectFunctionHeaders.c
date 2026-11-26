@@ -52,38 +52,35 @@ static void checkMain(const astNode *root) {
     }
 
     if (mainCount == 0) {
-        setErrCode(3);
         semError(3, "@main not found");
         return;
     }
     if (mainCount > 1) {
-        setErrCode(4);
         semError(4, "multiple @mains found");
         return;
     }
 
     if (mainFunc->data.funcDef.paramCount != 0) {
-        setErrCode(5);
         semError(5, "@main has a parameter");
+        return;
     }
 
     if (mainFunc->data.funcDef.explicitReturnType != UNKNOWN &&
         mainFunc->data.funcDef.explicitReturnType != UNIT) {
-        setErrCode(6);
         semError(6, "@main has invalid return type");
     }
 }
 /** @brief collects all function headers */
 void collectFunctionHeaders(astNode *root) {
     if (root == NULL) {
-        setErrCode(99);
+
         semError(99, "AST root is NULL");
         return;
     }
     for (size_t i = 0; i < root->data.program.count; i++) {
         const astNode *func = root->data.program.functions[i];
         if (func == NULL) {
-            setErrCode(99);
+
             semError(99, "NULL function node in AST");
             return;
         }
@@ -91,7 +88,6 @@ void collectFunctionHeaders(astNode *root) {
         const size_t paramCount = func->data.funcDef.paramCount;
 
         if (hasDuplicateParams(func->data.funcDef.params, paramCount)) {
-            setErrCode(4);
             semError(4, "duplicate func params");
         }
         paramData *params = NULL;
@@ -99,7 +95,7 @@ void collectFunctionHeaders(astNode *root) {
         if (paramCount > 0) {
             params = buildParamData(func->data.funcDef.params, paramCount);
             if (params == NULL) {
-                setErrCode(99);
+
                 semError(99, "failed to allocate parameter list");
                 return;
             }
@@ -112,11 +108,10 @@ void collectFunctionHeaders(astNode *root) {
         free(params);
 
         if (result == 1) {
-            setErrCode(4);
             semError(4, "function redefinition");
         } else if (result != 0) {
-            setErrCode(99);
-            semError(99, "symtable instert function failed");
+
+            semError(99, "symtable insert function failed");
         }
     }
 

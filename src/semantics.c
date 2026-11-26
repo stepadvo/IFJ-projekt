@@ -18,8 +18,8 @@
 codeGenState *state = NULL;
 
 void semError(int code, const char *msg) {
+    setErrCode(code);
     fprintf(stderr, "Semantic error (%d): %s\n", code, msg);
-    exit(code);
 }
 
 int semanticAnalyze(astNode *root) {
@@ -30,25 +30,43 @@ int semanticAnalyze(astNode *root) {
 
     if (symTableInit() != 0) {
         semError(99, "cannot allocate symbol table");
+        return ERRCODE;
     }
 
     if (builtinsRegister() != 0) {
         semError(99, "cannot register built-in functions");
+        symTableDestruct();
+        return ERRCODE;
     }
     state = codeGenInit();
     if (state == NULL) {
         semError(99, "cannot initialize code generator");
+        symTableDestruct();
+        return ERRCODE;
     }
     collectFunctionHeaders(root);
+    if (ERRCODE != 0) {
+        codeGenDestruct(state);
+        state = NULL;
+        symTableDestruct();
+        return ERRCODE;
+    }
 
-    SemCtx ctx = {.currentFunc = NULL};
+    SemCtx ctx = {.currentFunc = NULL, .root = root, .inferState = NULL};
+    ctx.inferState = calloc(root->data.program.count + 1, sizeof(InferState));
+    if (ctx.inferState == NULL) {
+        semError(99, "out of memory");
+        codeGenDestruct(state);
+        return ERRCODE;
+    }
 
     for (size_t i = 0; i < root->data.program.count; i++) {
-        analyzeFunction(&ctx, root->data.program.functions[i]);
+
         if (ERRCODE != 0) {
             codeGenDestruct(state);
             return ERRCODE;
         }
+        analyzeFunction(&ctx, root->data.program.functions[i]);
     }
     if (ERRCODE == 0) {
         codeGenOutCode(state);
