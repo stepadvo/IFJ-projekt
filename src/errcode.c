@@ -75,11 +75,19 @@ void logErr(errType type, size_t line, size_t column,
         bool newline = true;
         int pos = 0;
         // set lenght the maximum possible lenght of the new format
-        char format[2 * strlen(detailMsgFormat)];
+        // (adding 2 characters ('\0' and a possible newline at the end))
+        char format[2 * strlen(detailMsgFormat) + 2];
 
         for (size_t i = 0; i <= strlen(detailMsgFormat); i++) {
-            if (newline) {
+            if (newline && i < strlen(detailMsgFormat)) {
+                // insert tabulator if the previous char was a newline and
+                // we aren't at the last non '\0' character
                 format[pos++] = '\t';
+            }
+            if (!newline && i >= strlen(detailMsgFormat)) {
+                // no newline at the end of the message
+                // insert the newline
+                format[pos++] = '\n';
             }
 
             newline = detailMsgFormat[i] == '\n';
