@@ -12,16 +12,15 @@
 #include "generator.h"
 #include "internalSemantic.h"
 #include "symtable.h"
-#include <stdio.h>
 #include <stdlib.h>
 
 codeGenState *state = NULL;
-
+/** @brief sets Error code and writes error msg in stderr */
 void semError(int code, const char *msg) {
     setErrCode(code);
     logErr(code, 0, 0, msg);
 }
-
+/** @brief analysis of semantic aspect of code */
 int semanticAnalyze(astNode *root) {
 
     if (root == NULL) {
@@ -64,6 +63,8 @@ int semanticAnalyze(astNode *root) {
 
         if (ERRCODE != 0) {
             codeGenDestruct(state);
+            free(ctx.inferState);
+            symTableDestruct();
             return ERRCODE;
         }
         analyzeFunction(&ctx, root->data.program.functions[i]);
@@ -71,7 +72,8 @@ int semanticAnalyze(astNode *root) {
     if (ERRCODE == 0) {
         codeGenOutCode(state);
     }
-
+    free(ctx.inferState);
+    symTableDestruct();
     codeGenDestruct(state);
     state = NULL;
     return ERRCODE;
