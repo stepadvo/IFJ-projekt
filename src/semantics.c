@@ -9,6 +9,7 @@
 #include "ast.h"
 #include "builtins.h"
 #include "collectFunctionHeaders.h"
+#include "compiler.h"
 #include "generator.h"
 #include "internalSemantic.h"
 #include "symtable.h"
@@ -16,9 +17,9 @@
 
 codeGenState *state = NULL;
 /** @brief sets Error code and writes error msg in stderr */
-void semError(int code, const char *msg) {
+void semError(int code, const char *msg, size_t line) {
     setErrCode(code);
-    logErr(code, 0, 0, msg);
+    logErr(code, line, 0, msg);
 }
 /** @brief analysis of semantic aspect of code */
 int semanticAnalyze(astNode *root) {
@@ -28,18 +29,18 @@ int semanticAnalyze(astNode *root) {
     }
 
     if (symTableInit() != 0) {
-        semError(99, "cannot allocate symbol table");
+        semError(99, "cannot allocate symbol table", LOGERR_NO_POS);
         return ERRCODE;
     }
 
     if (builtinsRegister() != 0) {
-        semError(99, "cannot register built-in functions");
+        semError(99, "cannot register built-in functions", LOGERR_NO_POS);
         symTableDestruct();
         return ERRCODE;
     }
     state = codeGenInit();
     if (state == NULL) {
-        semError(99, "cannot initialize code generator");
+        semError(99, "cannot initialize code generator", LOGERR_NO_POS);
         symTableDestruct();
         return ERRCODE;
     }
@@ -54,7 +55,7 @@ int semanticAnalyze(astNode *root) {
     SemCtx ctx = {.currentFunc = NULL, .root = root, .inferState = NULL};
     ctx.inferState = calloc(root->data.program.count + 1, sizeof(InferState));
     if (ctx.inferState == NULL) {
-        semError(99, "out of memory");
+        semError(99, "out of memory", LOGERR_NO_POS);
         codeGenDestruct(state);
         return ERRCODE;
     }
