@@ -17,7 +17,7 @@
              stderr and exits with the matching code (3, 4, 5, 6. 7, 10)
 
 */
-void semError(int code, const char *msg);
+void semError(int code, const char *msg, size_t line);
 int semanticAnalyze(astNode *root);
 
 #endif

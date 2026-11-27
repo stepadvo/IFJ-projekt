@@ -23,11 +23,19 @@ void checkMalloc(void *ptr) {
     }
 }
 
+void addLineToNode(astNode *node, size_t line) {
+    if (!node) {
+        return;
+    }
+    node->line = line;
+}
+
 static astNode *newNode(astNodeType type) {
     astNode *node = calloc(1, sizeof(*node));
     checkMalloc(node);
     node->type = type;
     node->resultType = UNKNOWN;
+    node->line = 0;
     return node;
 }
 

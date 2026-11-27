@@ -138,7 +138,8 @@ static void printNodeSummary(const astNode *node) {
         break;
 
     case AST_FUNC_DEF:
-        printf("%sFunction %s(", node->data.funcDef.isMain ? "@main " : "",
+        printf("%lu: %sFunction %s(", node->line,
+               node->data.funcDef.isMain ? "@main " : "",
                node->data.funcDef.name != NULL ? node->data.funcDef.name
                                                : "<null>");
         for (size_t i = 0; i < node->data.funcDef.paramCount; i++) {
@@ -155,12 +156,13 @@ static void printNodeSummary(const astNode *node) {
         break;
 
     case AST_BLOCK:
-        printf("Block (%zu %s)", node->data.block.count,
+        printf("%lu: Block (%zu %s)", node->line, node->data.block.count,
                node->data.block.count == 1 ? "statement" : "statements");
         break;
 
     case AST_VAR_DEF:
-        printf("VarDef %s %s", node->data.varDef.isConstant ? "val" : "var",
+        printf("%lu: VarDef %s %s", node->line,
+               node->data.varDef.isConstant ? "val" : "var",
                node->data.varDef.name != NULL ? node->data.varDef.name
                                               : "<null>");
         if (node->data.varDef.explicitType != UNKNOWN) {
@@ -169,21 +171,23 @@ static void printNodeSummary(const astNode *node) {
         break;
 
     case AST_ASSIGN:
-        printf("Assign %s", node->data.assign.name != NULL
-                                ? node->data.assign.name
-                                : "<null>");
+        printf("%lu: Assign %s", node->line,
+               node->data.assign.name != NULL ? node->data.assign.name
+                                              : "<null>");
         break;
 
     case AST_IF:
+        printf("%lu: ", node->line);
         fputs("If", stdout);
         break;
 
     case AST_WHILE:
+        printf("%lu: ", node->line);
         fputs("While", stdout);
         break;
 
     case AST_FOR:
-        printf("For %s (%s)",
+        printf("%lu: For %s (%s)", node->line,
                node->data.forStmt.iteratorName != NULL
                    ? node->data.forStmt.iteratorName
                    : "<null>",
@@ -192,9 +196,10 @@ static void printNodeSummary(const astNode *node) {
         break;
 
     case AST_FUNC_CALL:
-        printf("Call %s", node->data.funcCall.funcName != NULL
-                              ? node->data.funcCall.funcName
-                              : "<null>");
+        printf("%lu: Call %s", node->line,
+               node->data.funcCall.funcName != NULL
+                   ? node->data.funcCall.funcName
+                   : "<null>");
         if (node->data.funcCall.argCount == 0) {
             fputs("()", stdout);
         } else {
@@ -205,19 +210,21 @@ static void printNodeSummary(const astNode *node) {
         break;
 
     case AST_RETURN:
+        printf("%lu: ", node->line);
         fputs(node->data.returnStmt.value != NULL ? "Return" : "Return (void)",
               stdout);
         break;
 
     case AST_BINOP:
-        printf("BinOp (%s)", binopSymbol(node->data.binop.op));
+        printf("%lu: BinOp (%s)", node->line, binopSymbol(node->data.binop.op));
         break;
 
     case AST_UNOP:
-        printf("UnOp (%s)", unopSymbol(node->data.unop.op));
+        printf("%lu: UnOp (%s)", node->line, unopSymbol(node->data.unop.op));
         break;
 
     case AST_LITERAL:
+        printf("%lu: ", node->line);
         switch (node->data.literal.litType) {
         case TOKEN_INT_LITERAL:
             printf("Literal Int: %" PRId64,
@@ -244,16 +251,16 @@ static void printNodeSummary(const astNode *node) {
         break;
 
     case AST_IDENTIFIER:
-        printf("Identifier %s", node->data.identifier.name != NULL
-                                    ? node->data.identifier.name
-                                    : "<null>");
+        printf("%lu: Identifier %s", node->line,
+               node->data.identifier.name != NULL ? node->data.identifier.name
+                                                  : "<null>");
         break;
     case AST_INT2DOUBLE:
-        printf("INT->DOUBLE");
+        printf("%lu: INT->DOUBLE", node->line);
         break;
 
     default:
-        printf("Unknown AST node (%d)", (int)node->type);
+        printf("%lu: Unknown AST node (%d)", node->line, (int)node->type);
         break;
     }
 }

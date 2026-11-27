@@ -52,43 +52,43 @@ static void checkMain(const astNode *root) {
     }
 
     if (mainCount == 0) {
-        semError(3, "@main not found");
+        semError(3, "@main not found", LOGERR_NO_POS);
         return;
     }
     if (mainCount > 1) {
-        semError(4, "multiple @mains found");
+        semError(4, "multiple @mains found", LOGERR_NO_POS);
         return;
     }
 
     if (mainFunc->data.funcDef.paramCount != 0) {
-        semError(5, "@main has a parameter");
+        semError(5, "@main has a parameter", mainFunc->line);
         return;
     }
 
     if (mainFunc->data.funcDef.explicitReturnType != UNKNOWN &&
         mainFunc->data.funcDef.explicitReturnType != UNIT) {
-        semError(6, "@main has invalid return type");
+        semError(6, "@main has invalid return type", mainFunc->line);
     }
 }
 /** @brief collects all function headers */
 void collectFunctionHeaders(astNode *root) {
     if (root == NULL) {
 
-        semError(99, "AST root is NULL");
+        semError(99, "AST root is NULL", LOGERR_NO_POS);
         return;
     }
     for (size_t i = 0; i < root->data.program.count; i++) {
         const astNode *func = root->data.program.functions[i];
         if (func == NULL) {
 
-            semError(99, "NULL function node in AST");
+            semError(99, "NULL function node in AST", LOGERR_NO_POS);
             return;
         }
 
         const size_t paramCount = func->data.funcDef.paramCount;
 
         if (hasDuplicateParams(func->data.funcDef.params, paramCount)) {
-            semError(4, "duplicate func params");
+            semError(4, "duplicate func params", func->line);
         }
         paramData *params = NULL;
 
@@ -96,7 +96,8 @@ void collectFunctionHeaders(astNode *root) {
             params = buildParamData(func->data.funcDef.params, paramCount);
             if (params == NULL) {
 
-                semError(99, "failed to allocate parameter list");
+                semError(99, "failed to allocate parameter list",
+                         LOGERR_NO_POS);
                 return;
             }
         }
@@ -108,10 +109,10 @@ void collectFunctionHeaders(astNode *root) {
         free(params);
 
         if (result == 1) {
-            semError(4, "function redefinition");
+            semError(4, "function redefinition", func->line);
         } else if (result != 0) {
 
-            semError(99, "symtable insert function failed");
+            semError(99, "symtable insert function failed", LOGERR_NO_POS);
         }
     }
 

@@ -9,19 +9,19 @@
 #include "ast.h"
 #include "builtins.h"
 #include "collectFunctionHeaders.h"
+#include "compiler.h"
 #include "generator.h"
 #include "internalSemantic.h"
 #include "symtable.h"
-#include <stdio.h>
 #include <stdlib.h>
 
 codeGenState *state = NULL;
-
-void semError(int code, const char *msg) {
+/** @brief sets Error code and writes error msg in stderr */
+void semError(int code, const char *msg, size_t line) {
     setErrCode(code);
-    fprintf(stderr, "Semantic error (%d): %s\n", code, msg);
+    logErr(code, line, 0, msg);
 }
-
+/** @brief analysis of semantic aspect of code */
 int semanticAnalyze(astNode *root) {
 
     if (root == NULL) {
@@ -29,18 +29,18 @@ int semanticAnalyze(astNode *root) {
     }
 
     if (symTableInit() != 0) {
-        semError(99, "cannot allocate symbol table");
+        // semError(99, "cannot allocate symbol table", LOGERR_NO_POS);
         return ERRCODE;
     }
 
     if (builtinsRegister() != 0) {
-        semError(99, "cannot register built-in functions");
+        semError(99, "cannot register built-in functions", LOGERR_NO_POS);
         symTableDestruct();
         return ERRCODE;
     }
     state = codeGenInit();
     if (state == NULL) {
-        semError(99, "cannot initialize code generator");
+        // semError(99, "cannot initialize code generator", LOGERR_NO_POS);
         symTableDestruct();
         return ERRCODE;
     }
@@ -55,7 +55,7 @@ int semanticAnalyze(astNode *root) {
     SemCtx ctx = {.currentFunc = NULL, .root = root, .inferState = NULL};
     ctx.inferState = calloc(root->data.program.count + 1, sizeof(InferState));
     if (ctx.inferState == NULL) {
-        semError(99, "out of memory");
+        semError(99, "out of memory", LOGERR_NO_POS);
         codeGenDestruct(state);
         return ERRCODE;
     }
@@ -64,6 +64,8 @@ int semanticAnalyze(astNode *root) {
 
         if (ERRCODE != 0) {
             codeGenDestruct(state);
+            free(ctx.inferState);
+            symTableDestruct();
             return ERRCODE;
         }
         analyzeFunction(&ctx, root->data.program.functions[i]);
@@ -71,7 +73,8 @@ int semanticAnalyze(astNode *root) {
     if (ERRCODE == 0) {
         codeGenOutCode(state);
     }
-
+    free(ctx.inferState);
+    symTableDestruct();
     codeGenDestruct(state);
     state = NULL;
     return ERRCODE;
