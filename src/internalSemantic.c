@@ -12,15 +12,12 @@
 #include "semantics.h"
 #include "symtable.h"
 #include <string.h>
+
 static int findFuncIndex(SemCtx *ctx, const char *name);
 static bool endReturn(astNode *node);
 extern codeGenState *state;
 static astNode *wrapInt2Double(astNode *operand);
-/** @brief tests compatibility of operands */
-bool isCompatible(varType expected, varType actual);
-/** @brief checks if operand is numeric */
-bool isNumeric(varType t);
-
+/** @brief abalyzes a signle funtion */
 void analyzeFunction(SemCtx *ctx, astNode *func) {
     const char *name = func->data.funcDef.name;
 
@@ -359,6 +356,7 @@ varType analyzeExpr(SemCtx *ctx, astNode *expr) {
         return UNKNOWN;
     }
 }
+/** @brief analyzes variable definition */
 void analyzeVarDef(SemCtx *ctx, astNode *stmt) {
     varType initType = analyzeExpr(ctx, stmt->data.varDef.initializer);
 
@@ -397,6 +395,7 @@ void analyzeVarDef(SemCtx *ctx, astNode *stmt) {
 
     stmt->resultType = finalType;
 }
+/** @brief analyzes assign */
 void analyzeAssign(SemCtx *ctx, astNode *stmt) {
     int uniqueId = 0;
     varData var = symTableFindVar(stmt->data.assign.name, &uniqueId);
@@ -423,7 +422,7 @@ void analyzeAssign(SemCtx *ctx, astNode *stmt) {
     }
     stmt->resultType = var.dataType;
 }
-
+/** @brief analyzes if statements */
 varType analyzeIf(SemCtx *ctx, astNode *stmt) {
     varType condType = analyzeExpr(ctx, stmt->data.ifStmt.condition);
     if (condType != BOOL && condType != UNKNOWN) {
@@ -457,6 +456,7 @@ varType analyzeIf(SemCtx *ctx, astNode *stmt) {
     }
     return stmt->resultType;
 }
+/** @brief analyzes while loops */
 void analyzeWhile(SemCtx *ctx, astNode *stmt) {
     varType condType = analyzeExpr(ctx, stmt->data.whileStmt.condition);
     if (condType != BOOL && condType != UNKNOWN) {
@@ -474,6 +474,7 @@ void analyzeWhile(SemCtx *ctx, astNode *stmt) {
     }
     endBlock();
 }
+/** @brief analyzes for loops */
 void analyzeFor(SemCtx *ctx, astNode *stmt) {
 
     varType startType = analyzeExpr(ctx, stmt->data.forStmt.start);
@@ -565,13 +566,14 @@ void analyzeReturn(SemCtx *ctx, astNode *stmt) {
         stmt->resultType = UNIT;
     }
 }
-
+/** @brief checks of 2 types are compatible */
 bool isCompatible(varType expected, varType actual) {
     if ((expected == actual) || (expected == DOUBLE && actual == INT)) {
         return true;
     }
     return false;
 }
+/** @brief checks if number is numeric */
 bool isNumeric(varType t) { return t == INT || t == DOUBLE; }
 static astNode *wrapInt2Double(astNode *operand) {
     astNode *conv = createInt2DoubleNode(operand);
@@ -593,6 +595,7 @@ static int findFuncIndex(SemCtx *ctx, const char *name) {
     }
     return -1;
 }
+/** @brief checks if all blocks in func end with return */
 static bool endReturn(astNode *node) {
     if (node == NULL)
         return false;
