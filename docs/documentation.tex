@@ -133,7 +133,7 @@ Soubory \texttt{token.c} a \texttt{token.h} definují společnou reprezentaci to
 
 Lexer se vytváří funkcí \texttt{lexerCreate()}, která dostává otevřený vstupní proud \texttt{FILE *}. Parser následně podle potřeby volá \code{getToken()} a získává vždy jeden další token. Celý vstup se tedy nemusí předem načíst do paměti.
 
-Struktura \texttt{Token} obsahuje typ tokenu, jeho případný atribut, řádek a sloupec začátku a metadata pro zpracování logických řádků. Atribut je reprezentován unií\texttt{TokenAttribute}: může obsahovat celočíselnou, desetinnou nebo Boolean hodnotu či text identifikátoru a řetězce.
+Struktura \texttt{Token} obsahuje typ tokenu, jeho případný atribut, řádek a sloupec začátku a metadata pro zpracování logických řádků. Atribut je reprezentován unií \texttt{TokenAttribute}: může obsahovat celočíselnou, desetinnou nebo Boolean hodnotu či text identifikátoru a řetězce.
 
 \subsection{Rozpoznávání lexémů}
 
@@ -414,18 +414,18 @@ Tyto tabulky jsou části jedné LL tabulky. Čísla odkazují na pravidla výš
 \begin{figure}[ht]
     \centering
     \includegraphics[width=1\textwidth]{obrazek.png}
-    \caption{LL tabulka 1.část}
+    \caption{Precedenční tabulka 1.část}
 \end{figure}
 \begin{figure}[ht]
     \centering
     \includegraphics[width=1\textwidth]{obrazek3.png}
-    \caption{LL tabulka 2.část}
+    \caption{Precedenční tabulka 2.část}
 \end{figure}
 \newpage
 \begin{figure}[ht]
     \centering
     \includegraphics[width=1\textwidth]{obrazek2.png}
-    \caption{LL tabulka 3.část}
+    \caption{Precedenční tabulka 3.část}
 \end{figure}
 Řádky: symbol na zásobníku
 
