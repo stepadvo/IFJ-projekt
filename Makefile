@@ -6,6 +6,10 @@ LDFLAGS = -lgtest -lgtest_main -pthread -lstdc++
 
 VPATH=src:test:include
 
+TEX_DIR := docs
+TEX_SRC := $(TEX_DIR)/documentation.tex
+PDF_OUT := dokumentace.pdf
+
 #targets:
 #add the build targets here
 #TEST_EXAMPLE = test_example
@@ -25,9 +29,14 @@ build:
 
 clean:
 	rm -f *.o *.out
+	rm -f main.aux main.log main.out main.toc main.lof main.lot $(PDF_OUT)
 
 format:
 	clang-format -i include/* src/* test/*
+
+doc: $(TEX_SRC) $(wildcard $(TEX_DIR)/*.png)
+	TEXINPUTS=".:./$(TEX_DIR)//:" pdflatex -interaction=nonstopmode -output-directory=. $(TEX_SRC)
+	TEXINPUTS=".:./$(TEX_DIR)//:" pdflatex -interaction=nonstopmode -output-directory=. $(TEX_SRC)
 
 test: $(foreach t,$(TEST_STEMS),$($(t))_build)
 	$(foreach t,$(TEST_STEMS), ./$($(t)).out)
@@ -42,5 +51,5 @@ endef
 
 $(foreach t,$(TEST_STEMS),$(eval $(call DEFINE_TEST_RULES,$(t))))
 
-.PHONY: all clean format
+.PHONY: all clean format doc
 
