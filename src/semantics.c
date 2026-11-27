@@ -29,7 +29,7 @@ int semanticAnalyze(astNode *root) {
     }
 
     if (symTableInit() != 0) {
-        semError(99, "cannot allocate symbol table", LOGERR_NO_POS);
+        // semError(99, "cannot allocate symbol table", LOGERR_NO_POS);
         return ERRCODE;
     }
 
@@ -40,7 +40,7 @@ int semanticAnalyze(astNode *root) {
     }
     state = codeGenInit();
     if (state == NULL) {
-        semError(99, "cannot initialize code generator", LOGERR_NO_POS);
+        // semError(99, "cannot initialize code generator", LOGERR_NO_POS);
         symTableDestruct();
         return ERRCODE;
     }

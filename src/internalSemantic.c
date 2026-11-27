@@ -391,7 +391,7 @@ void analyzeVarDef(SemCtx *ctx, astNode *stmt) {
         stmt->resultType = UNKNOWN;
         return;
     } else if (insert != 0) {
-        semError(99, "cannot insert value", LOGERR_NO_POS);
+        // semError(99, "cannot insert value", LOGERR_NO_POS);
         stmt->resultType = UNKNOWN;
         return;
     }
@@ -512,7 +512,8 @@ void analyzeFor(SemCtx *ctx, astNode *stmt) {
 
     int insert = symTableInsertVar(stmt->data.forStmt.iteratorName, INT, true);
     if (insert != 0) {
-        semError(insert == 1 ? 4 : 99, "cannot insert variable", LOGERR_NO_POS);
+        // semError(insert == 1 ? 4 : 99, "cannot insert variable",
+        // LOGERR_NO_POS);
     }
     for (size_t i = 0; i < stmt->data.forStmt.guardCount; i++) {
         varType guardType = analyzeExpr(ctx, stmt->data.forStmt.guards[i]);
@@ -582,7 +583,7 @@ static astNode *wrapInt2Double(astNode *operand) {
     astNode *conv = createInt2DoubleNode(operand);
     if (conv == NULL) {
 
-        semError(99, "failed to create AST_INT2DOUBLE node", LOGERR_NO_POS);
+        // semError(99, "failed to create AST_INT2DOUBLE node", LOGERR_NO_POS);
         return operand;
     }
     conv->resultType = DOUBLE;
